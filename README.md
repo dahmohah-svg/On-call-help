@@ -33,6 +33,14 @@ The app always opens on the shift running now (at 03:00 that is the shift that s
 **Swaps:** on the Board a second on-call taps *Swap* on a doctor and picks who covers. Their tasks and roles move across, and every change is logged on that shift.
 **Handover:** the next shift shows a banner to carry over anything unfinished from the previous one.
 
+## Coverage plan (night and holiday on-call)
+The **Coverage** tab splits the shift into equal blocks:
+- **2nd on-call · OT:** second on-calls take equal turns in OT (the coordinator joins the turns only when there is a single other second on-call).
+- **1st on-call · phone & OT:** first on-calls take equal turns holding the phone (emergency calls, assessments, APS, code blue) and covering OT; the others are free.
+- **OB/GYN:** one first on-call covers it alone for the whole shift.
+
+A second on-call makes the plan in one tap and can change any block. Auto-assign follows it, the Board shows who covers right now, *My work* shows each doctor's turns, and the plan can be copied to the group chat.
+
 ## Roles
 Each phone chooses **who you are** (button at the top). The app then adapts:
 - **Third on-call:** read-only overview of the whole shift, including help requests.

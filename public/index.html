@@ -161,6 +161,11 @@ select.status { border: 1px solid var(--line); background: var(--surface-2); bor
 .rota-t td, .rota-t th { white-space: nowrap; }
 .rota-t tr.cur td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .team-card { border: 1px solid var(--line); border-radius: 6px; padding: 10px; display: grid; gap: 8px; background: var(--bg); }
+.plan-t td, .plan-t th { white-space: nowrap; }
+.plan-t td.time { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.plan-t tr.now td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.nowbar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); font-size: 13.5px; }
+.nowbar b.k { font-family: var(--f-display); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; color: var(--muted); font-weight: 600; }
 .log { font-size: 12.5px; color: var(--muted); display: grid; gap: 2px; margin: 0; padding-left: 16px; }
 details.done-list summary { cursor: pointer; font-weight: 700; color: var(--muted); font-size: 13px; padding: 4px 0; }
 .task.done { opacity: .5; }
@@ -257,6 +262,7 @@ pre.handover { background: var(--bg); border: 1px solid var(--line); border-radi
     <nav class="tabs" role="tablist" id="tabs">
       <button role="tab" data-tab="mine" id="tabMine">My work</button>
       <button role="tab" data-tab="board">Board</button>
+      <button role="tab" data-tab="plan">Coverage</button>
       <button role="tab" data-tab="timeline">Schedule</button>
       <button role="tab" data-tab="tasks">Tasks</button>
       <button role="tab" data-tab="ot">OT list</button>
@@ -487,6 +493,7 @@ function rewindow(sh) {
   const diff = hm2abs(w.start) - hm2abs(sh.shift.start);
   sh.tasks.forEach(t => { if (t.start != null) { t.start = ((t.start - diff) % 1440 + 1440) % 1440; } });
   sh.shift.start = w.start; sh.shift.mins = w.mins;
+  if (sh.plan) sh.plan = null;   // block times no longer fit; make the plan again
 }
 function applyTeamToShift(sh, teamId) {
   const keep = new Map(sh.doctors.map(d => [d.id, d]));
@@ -549,6 +556,69 @@ function penalty(d, t) {
   if (t.type !== 'list' && d.listPrep && t.priority >= 3) p += 10;
   return p;
 }
+/* ---------- coverage plan: equal blocks for OT (2nd) and phone / OT (1st); OB/GYN alone all shift ---------- */
+const PHONE_TYPES = ['em', 'pre', 'aps', 'code'];
+function planPeople(sh) {
+  const av = sh.doctors.filter(d => d.status !== 'off');
+  const nonCoord = av.filter(d => d.tier === 'second' && !d.coordinator);
+  return { secs: nonCoord.length >= 2 ? nonCoord : av.filter(d => d.tier === 'second'),
+    firsts: av.filter(d => d.tier === 'first' && !d.obs && !(d.listPrep && !d.duty)), obs: av.filter(d => d.obs) };
+}
+function cuts(n) { const L = shiftLen(); return Array.from({ length: n + 1 }, (_, i) => i === n ? L : Math.round(L * i / n / 15) * 15); }
+function makePlan(secIds, firstIds) {
+  const sc = cuts(Math.max(1, secIds.length)), fc = cuts(Math.max(1, firstIds.length)); const k = firstIds.length;
+  return { secIds, firstIds,
+    sec: secIds.length ? secIds.map((id, i) => ({ start: sc[i], end: sc[i + 1], id })) : [],
+    first: k ? firstIds.map((id, i) => ({ start: fc[i], end: fc[i + 1], phone: id, ot: k >= 2 ? firstIds[(i + 1) % k] : '' })) : [] };
+}
+function blockAt(list, m) { return (list || []).find(b => m >= b.start && m < b.end); }
+function planPenalty(d, t, at) {
+  const P = S.plan; if (!P || S.session === 'am') return 0;
+  const fb = blockAt(P.first, at), sb = blockAt(P.sec, at);
+  if (PHONE_TYPES.includes(t.type) && d.tier === 'first' && fb && fb.phone) return d.id === fb.phone ? -10 : 60;
+  if (t.type === 'ot') {
+    if (d.tier === 'second' && sb && sb.id) return d.id === sb.id ? -10 : 60;
+    if (d.tier === 'first') return fb && fb.ot === d.id ? -10 : 60;
+  }
+  return 0;
+}
+function planText() {
+  const P = S.plan; if (!P) return '';
+  const nm = id => (doc(id) || {}).name || '—'; const { obs } = planPeople(S);
+  let out = `COVERAGE · ${dayLabel(S.date)} · ${sessionName(S)} ${S.shift.start}–${fmt(shiftLen())}\n`;
+  if (P.sec.length) out += `\n2nd on-call in OT:\n` + P.sec.map(b => `  ${fmt(b.start)}–${fmt(b.end)}  ${nm(b.id)}`).join('\n') + '\n';
+  if (P.first.length) out += `\n1st on-call:\n` + P.first.map(b => `  ${fmt(b.start)}–${fmt(b.end)}  Phone: ${nm(b.phone)}${b.ot ? ' · OT: ' + nm(b.ot) : ''}`).join('\n') + '\n';
+  if (obs.length) out += `\nOB/GYN (whole shift): ${obs.map(d => d.name).join(', ')}${dutyPhone('obs') ? ' · ' + dutyPhone('obs') : ''}\n`;
+  const ph = ['pre', 'em', 'aps'].filter(k => dutyPhone(k)).map(k => `${DUTY[k]} ${dutyPhone(k)}`);
+  if (ph.length) out += `Phones: ${ph.join(' · ')}\n`;
+  return out;
+}
+function nowBar() {
+  const P = S.plan; const nr = nowRel(); if (!P || S.session === 'am' || !isFinite(nr)) return '';
+  const nm = id => esc((doc(id) || {}).name || '—'); const fb = blockAt(P.first, nr), sb = blockAt(P.sec, nr); const { obs } = planPeople(S);
+  return `<div class="nowbar"><b class="k">Now ${fmt(nr)}</b>${sb ? `<span>2nd in OT: <b>${nm(sb.id)}</b></span>` : ''}${fb ? `<span>Phone: <b>${nm(fb.phone)}</b></span>${fb.ot ? `<span>1st in OT: <b>${nm(fb.ot)}</b></span>` : ''}` : ''}${obs.length ? `<span>OB/GYN: <b>${esc(obs.map(d => d.name).join(', '))}</b></span>` : ''}<button class="btn sm ghost" data-act="tab" data-tab="plan">Coverage</button></div>`;
+}
+function viewPlan() {
+  if (S.session === 'am') return `<section class="panel"><h2>Coverage</h2><p class="empty" style="margin:0">In the morning each first on-call works their own outside duty, so there is no phone or OT rota. The coverage plan is for the night and holiday on-call.</p><div class="row"><button class="btn" data-act="openshift" data-date="${S.date}">Open tonight</button></div></section>`;
+  const P = S.plan; const { secs, firsts, obs } = planPeople(S); const nr = nowRel(); const edit = canAssign();
+  const sel = (g, i, f, val, pool) => edit ? `<select class="who" data-act="plan-cell" data-g="${g}" data-i="${i}" data-f="${f}" aria-label="${g === 'sec' ? '2nd on-call in OT' : f === 'phone' ? 'Phone holder' : '1st on-call in OT'}"><option value="">—</option>${pool.map(d => `<option value="${d.id}" ${val === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select>` : `<b>${esc((doc(val) || {}).name || '—')}</b>`;
+  const allSec = S.doctors.filter(d => d.tier === 'second'), allFirst = S.doctors.filter(d => d.tier === 'first' && !d.obs);
+  let h = nowBar();
+  if (!P) h += `<section class="panel"><h2>Coverage plan</h2><p class="empty" style="margin:0">No plan for this shift yet. The plan splits the shift into equal blocks: second on-calls take turns in OT, and first on-calls take turns holding the phone and covering OT. OB/GYN is covered by one first on-call for the whole shift.</p>${edit ? '' : '<p class="empty" style="margin:0">A second on-call makes the plan.</p>'}</section>`;
+  if (edit) h += `<section class="panel"><h2>${P ? 'Make the plan again' : 'Who takes turns'}</h2>
+    <div class="row"><span class="empty">2nd on-call in OT:</span>${allSec.map(d => `<label class="row" style="gap:4px;font-size:13px"><input type="checkbox" data-plan-sec="${d.id}" ${(P ? P.secIds.includes(d.id) : secs.some(x => x.id === d.id)) ? 'checked' : ''}>${esc(d.name)}${d.coordinator ? ' (coord)' : ''}</label>`).join('') || '<span class="empty">none on shift</span>'}</div>
+    <div class="row"><span class="empty">1st on-call phone / OT:</span>${allFirst.map(d => `<label class="row" style="gap:4px;font-size:13px"><input type="checkbox" data-plan-first="${d.id}" ${(P ? P.firstIds.includes(d.id) : firsts.some(x => x.id === d.id)) ? 'checked' : ''}>${esc(d.name)}</label>`).join('') || '<span class="empty">none on shift</span>'}</div>
+    <div class="row"><button class="btn primary" data-act="plan-make">${P ? 'Remake equal plan' : 'Make equal plan'}</button>${P ? '<button class="btn sm ghost danger" data-act="plan-del">Clear plan</button>' : ''}</div></section>`;
+  if (P) {
+    h += `<section class="panel"><div class="row"><h2>2nd on-call · OT</h2></div>${P.sec.length ? `<div class="scroll-x"><table class="team-t plan-t"><thead><tr><th>Time</th><th>In OT</th></tr></thead><tbody>${P.sec.map((b, i) => `<tr class="${nr >= b.start && nr < b.end ? 'now' : ''}"><td class="time">${fmt(b.start)}–${fmt(b.end)}</td><td>${sel('sec', i, 'id', b.id, allSec)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty" style="margin:0">No second on-call in the rota.</p>'}</section>`;
+    h += `<section class="panel"><div class="row"><h2>1st on-call · phone &amp; OT</h2></div>${P.first.length ? `<div class="scroll-x"><table class="team-t plan-t"><thead><tr><th>Time</th><th>Phone</th><th>In OT</th><th>Free</th></tr></thead><tbody>${P.first.map((b, i) => { const free = allFirst.filter(d => P.firstIds.includes(d.id) && d.id !== b.phone && d.id !== b.ot).map(d => esc(d.name)).join(', ');
+      return `<tr class="${nr >= b.start && nr < b.end ? 'now' : ''}"><td class="time">${fmt(b.start)}–${fmt(b.end)}</td><td>${sel('first', i, 'phone', b.phone, allFirst)}</td><td>${sel('first', i, 'ot', b.ot, allFirst)}</td><td class="empty">${free || '—'}</td></tr>`; }).join('')}</tbody></table></div>` : '<p class="empty" style="margin:0">No first on-call in the rota.</p>'}
+      <p class="empty" style="margin:0">The phone holder takes emergency calls, assessments, APS and code blue during their block${['pre', 'em'].some(k => dutyPhone(k)) ? ' (' + ['pre', 'em', 'aps'].filter(k => dutyPhone(k)).map(k => DUTY[k] + ' ' + dutyPhone(k)).join(' · ') + ')' : ''}.</p></section>`;
+    h += `<section class="panel"><h2>OB/GYN · whole shift</h2><p style="margin:0">${obs.length ? obs.map(d => `<b>${esc(d.name)}</b>`).join(', ') : '<span class="late">No OB/GYN on-call on this shift</span>'}${dutyPhone('obs') ? ` · <span class="num">${esc(dutyPhone('obs'))}</span>` : ''}</p></section>`;
+    h += `<div class="row"><button class="btn" data-act="plan-copy">Copy plan for the group chat</button></div>`;
+  }
+  return h;
+}
 function inTheatre(x) { return (x.type === 'ot' || x.type === 'obs') && !!x.theatre; }
 function theatreCase(x) { return x.type === 'ot' || (x.type === 'obs' && !!x.theatre); }
 function load_(d) { return S.tasks.filter(t => t.doctorId === d.id && t.status !== 'done').reduce((a, t) => a + t.duration, 0); }
@@ -574,7 +644,7 @@ function autoSchedule() {
       for (const th of ths) {
         const tBusy = th ? busyOf(x => inTheatre(x) && x.theatre === th) : [];
         const slot = findSlot([dBusy, tBusy], earliest, t.duration);
-        const score = slot + penalty(d, t) + load_(d) / 1000;
+        const score = slot + penalty(d, t) + planPenalty(d, t, slot) + load_(d) / 1000;
         if (!best || score < best.score) best = { score, slot, d, th };
       }
     }
@@ -647,7 +717,7 @@ function render() {
   const mb = document.getElementById('meBtn'); mb.textContent = (meDoc() || meStaff()) ? 'Me: ' + myName() : ui.meId === 'observer' ? 'Observer' : 'Who are you?'; mb.classList.toggle('unset', !ui.meId);
   document.getElementById('tabMine').hidden = role() === 'third';
   if (ui.tab === 'mine' && role() === 'third') ui.tab = 'board';
-  const views = { mine: viewMine, board: viewBoard, timeline: viewTimeline, tasks: viewTasks, ot: viewOT, team: viewTeam };
+  const views = { mine: viewMine, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewOT, team: viewTeam };
   $main.innerHTML = (views[ui.tab] || viewBoard)();
   if (ui.tab === 'timeline') { const w = $main.querySelector('.tl-wrap'); const n = $main.querySelector('.now'); if (w && n && !w.dataset.scrolled) { w.scrollLeft = Math.max(0, n.offsetLeft - 220); w.dataset.scrolled = 1; } }
 }
@@ -720,7 +790,8 @@ function viewBoard() {
   const unassigned = S.tasks.filter(t => t.status !== 'done' && !t.doctorId);
   const coord = S.doctors.find(d => d.coordinator); const lp = S.doctors.filter(d => d.listPrep);
   const thirds = S.doctors.filter(d => d.tier === 'third');
-  let h = exampleBanner() + addButtons() + carryBanner() + helpQueue(false) + shiftTeamPanel();
+  let h = exampleBanner() + nowBar() + addButtons() + carryBanner() + helpQueue(false) + shiftTeamPanel();
+  if (S.session !== 'am' && !S.plan && canAssign()) h += `<div class="banner"><span>No coverage plan for this shift yet: OT turns for 2nd on-calls, phone and OT turns for 1st on-calls.</span><button class="btn sm primary" data-act="tab" data-tab="plan">Make it</button></div>`;
   if (S.session !== 'am') h += `<div class="banner">${thirds.length ? `<span><b>3rd on-call:</b> ${thirds.map(d => esc(d.name) + (d.thirdRole ? ' (' + esc(THIRD_ROLE[d.thirdRole]) + ')' : '') + (d.ext ? ` · ext <span class="num">${esc(d.ext)}</span>` : '')).join(', ')}</span>` : ''}<span><b>Coordinator:</b> ${coord ? esc(coord.name) + (coord.ext ? ` · ext <span class="num">${esc(coord.ext)}</span>` : '') : '<span class="late">not set</span>'}</span>
     <span><b>List prep:</b> ${lp.length ? lp.map(d => esc(d.name) + ` (${d.tier === 'second' ? '2nd' : '1st'})`).join(', ') : '<span class="late">not set</span>'}</span></div>`;
   if (unassigned.length) {
@@ -999,6 +1070,7 @@ function handoverText() {
   const un = S.tasks.filter(t => !t.doctorId && t.status !== 'done');
   if (un.length) out += `\nUNASSIGNED\n` + un.map(line).join('\n') + '\n';
   const done = S.tasks.filter(t => t.status === 'done').length;
+  if (S.plan && S.session !== 'am') out += '\n' + planText();
   out += `\nCompleted this shift: ${done}`;
   if ((S.log || []).length) out += `\n\nTeam changes:\n` + S.log.map(l => '  ' + l.text + ' (' + l.by + ')').join('\n');
   return out;
@@ -1065,7 +1137,7 @@ function mergeColl(base, mine, theirs) {
 function pick(b, m, t, k) { return same(b && b[k], m && m[k]) ? t[k] : m[k]; }
 function mergeShift(b, m, t) {
   b = b || t;
-  return { ...t, teamId: pick(b, m, t, 'teamId'), holiday: pick(b, m, t, 'holiday'), shift: pick(b, m, t, 'shift'),
+  return { ...t, teamId: pick(b, m, t, 'teamId'), holiday: pick(b, m, t, 'holiday'), shift: pick(b, m, t, 'shift'), plan: pick(b, m, t, 'plan'),
     doctors: mergeColl(b.doctors, m.doctors, t.doctors), tasks: mergeColl(b.tasks, m.tasks, t.tasks), log: mergeColl(b.log, m.log, t.log) };
 }
 function merge(base, mine, theirs) {
@@ -1176,6 +1248,12 @@ function viewMine() {
     <div class="chips"><span class="chip ${d.tier === 'second' ? 'tier2' : 'tier1'}">${esc(tierLabel(d))}</span>${dutyChips(d)}${S.session === 'am' ? '' : postChip(d)}${d.coordinator ? '<span class="chip coord">Coordinator</span>' : ''}${d.listPrep ? '<span class="chip lp">List prep</span>' : ''}</div></div>
     <select class="status" data-act="docstatus" data-id="${d.id}" aria-label="My availability">${Object.entries(DOC_STATUS).map(([k, v]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
     ${d.tier === 'first' ? `<p style="margin:0">Your duty: <b>${esc(d.duty ? DUTY[d.duty] : 'none yet')}</b>${d.duty && dutyPhone(d.duty) ? ` · duty phone <b class="num">${esc(dutyPhone(d.duty))}</b>` : ''}</p>${S.session === 'am' ? '' : `<p class="empty" style="margin:0">Tonight's post: <b>${esc(postLabel(d))}</b>. The second on-call sets this.</p>`}` : ''}</section>`;
+  if (S.plan && S.session !== 'am') {
+    const mine = []; S.plan.sec.forEach(b => { if (b.id === d.id) mine.push(`In OT ${fmt(b.start)}–${fmt(b.end)}`); });
+    S.plan.first.forEach(b => { if (b.phone === d.id) mine.push(`Phone ${fmt(b.start)}–${fmt(b.end)}`); if (b.ot === d.id) mine.push(`In OT ${fmt(b.start)}–${fmt(b.end)}`); });
+    if (d.obs) mine.push(`OB/GYN all shift`);
+    h += `<div class="nowbar"><b class="k">My turns</b>${mine.length ? mine.map(x => `<span>${esc(x)}</span>`).join('') : '<span>None in the coverage plan</span>'}</div>`;
+  }
   h += helpQueue(true);
   h += `<section style="display:grid;gap:8px"><h2>Post a case or duty you received</h2><div class="row">` + Object.entries(TYPES).map(([k, v]) =>
     `<button class="btn ${v.cls}" data-act="new" data-type="${k}"><span class="dot"></span>${v.short}</button>`).join('') + `</div></section>`;
@@ -1227,13 +1305,23 @@ document.addEventListener('click', e => {
   const a = el.dataset.act; const id = el.dataset.id;
   if (a === 'close-bg' && e.target !== el) return;
   const t = id ? S.tasks.find(x => x.id === id) : null;
-  const viewOnly = new Set(['close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
+  const viewOnly = new Set(['tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
   const manage = new Set(['fill', 'team-add', 'team-del', 'tm-del', 'sf-add', 'sf-del', 'hol-add', 'hol-del', 'reset', 'reset-yes']);
   if (manage.has(a)) { if (!canManage()) { toast('Only second on-calls can change the rota and teams'); return; } }
   else if (!canEdit() && !viewOnly.has(a)) { toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
   if (a === 'edit' && t && !canEditTask(t)) { toast("Only the second on-call can change another doctor's task"); return; }
   switch (a) {
     case 'whoami': showWho(); break;
+    case 'tab': ui.tab = el.dataset.tab; writePref('tab', ui.tab); render(); window.scrollTo(0, 0); break;
+    case 'plan-copy': showText('Coverage plan', planText()); break;
+    case 'plan-make': {
+      if (!canAssign()) { toast('Only the second on-call can make the plan'); break; }
+      const secIds = [...document.querySelectorAll('[data-plan-sec]:checked')].map(x => x.dataset.planSec);
+      const firstIds = [...document.querySelectorAll('[data-plan-first]:checked')].map(x => x.dataset.planFirst);
+      S.plan = makePlan(secIds, firstIds); logChange(`Coverage plan made: ${secIds.length} in OT turns, ${firstIds.length} on phone/OT turns`);
+      autoSchedule(); commit(); toast('Coverage plan ready'); break;
+    }
+    case 'plan-del': S.plan = null; logChange('Coverage plan cleared'); autoSchedule(); commit(); break;
     case 'nav-prev': case 'nav-next': ui.shiftDate = stepKey(S.key, a === 'nav-prev' ? -1 : 1); pointShift(); render(); break;
     case 'nav-now': ui.shiftDate = currentShiftDate(); pointShift(); render(); break;
     case 'openshift': ui.shiftDate = el.dataset.date; pointShift(); if (ui.tab === 'team' || ui.tab === 'mine' && !meDoc()) ui.tab = 'board'; writePref('tab', ui.tab); render(); window.scrollTo(0, 0); break;
@@ -1245,6 +1333,7 @@ document.addEventListener('click', e => {
       const nd = Object.assign({}, from, { id: sf.id, name: sf.name, ext: sf.ext || '', status: 'available' });
       S.doctors = S.doctors.map(x => x.id === from.id ? nd : x);
       S.tasks.forEach(t => { if (t.doctorId === from.id) t.doctorId = sf.id; });
+      if (S.plan) { const sw = x => x === from.id ? sf.id : x; S.plan.secIds = S.plan.secIds.map(sw); S.plan.firstIds = S.plan.firstIds.map(sw); S.plan.sec.forEach(b => b.id = sw(b.id)); S.plan.first.forEach(b => { b.phone = sw(b.phone); b.ot = sw(b.ot); }); }
       logChange(`${sf.name} replaced ${from.name} (${tierLabel(from)})`);
       $layer.innerHTML = ''; autoSchedule(); commit(); toast(`${sf.name} now covers ${from.name}'s place`); break;
     }
@@ -1337,6 +1426,12 @@ document.addEventListener('change', e => {
   const futureShifts = () => Object.values(R.shifts).filter(x => x.date >= keyDate(currentShiftDate()));
   switch (a) {
     case 'duty': d.duty = el.value; d.obs = el.value === 'obs'; logChange(`${d.name}: ${el.value ? DUTY[el.value] : 'no duty'}`); autoSchedule(); commit(); toast(`${d.name}: ${el.value ? DUTY[el.value] : 'no duty'}`); break;
+    case 'plan-cell': {
+      if (!canAssign()) { render(); break; }
+      const b = S.plan[el.dataset.g][Number(el.dataset.i)]; b[el.dataset.f] = el.value;
+      logChange(`Coverage ${fmt(b.start)}–${fmt(b.end)}: ${el.dataset.g === 'sec' ? '2nd in OT' : el.dataset.f === 'phone' ? 'phone' : '1st in OT'} → ${(doc(el.value) || {}).name || 'nobody'}`);
+      autoSchedule(); commit(); break;
+    }
     case 'setstatus': setTaskStatus(S.tasks.find(x => x.id === el.dataset.id), el.value); break;
     case 'assign': {
       const t = S.tasks.find(x => x.id === el.dataset.id); if (!t) break;
