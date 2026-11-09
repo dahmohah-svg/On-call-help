@@ -17,6 +17,12 @@ It then opens full screen and works without signal.
 - Edit `src/app.html`, then run `./build.sh` to rebuild `public/index.html`.
 - `public/` holds the manifest, service worker (offline support) and icons.
 
+## Roles
+Each phone chooses **who you are** (button at the top). The app then adapts:
+- **Third on-call:** read-only overview of the whole shift, including help requests.
+- **Second on-call:** assigns any task to a doctor from the task card, and posts each first on-call *Inside OT* (any or a named theatre) or *Outside OT*.
+- **First on-call:** *My work* shows their own cases and duties. They post what they receive and mark each one To do, In progress, Done or Need help. Help requests appear at the top of everyone's board, and anyone can tap *I'll go*.
+
 ## Shared team board
 In **Team & shift → Share with the team**, one doctor taps **Create team board** and sends the link to the team chat. Everyone who opens the link sees the same board, and changes appear on other phones within a few seconds. Edits made at the same time on different phones are merged, and the app keeps working offline and syncs when signal returns.
 
