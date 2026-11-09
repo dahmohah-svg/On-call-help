@@ -17,6 +17,18 @@ It then opens full screen and works without signal.
 - Edit `src/app.html`, then run `./build.sh` to rebuild `public/index.html`.
 - `public/` holds the manifest, service worker (offline support) and icons.
 
+## Rota and teams
+One board holds the whole department. Under **Rota & teams**:
+- **All staff:** everyone, once, with their grade (3rd, 2nd, 1st on-call) and whether they usually cover Obs & Gyne.
+- **Teams:** the usual group for a night, with coordinator, list prep and Obs & Gyne marked.
+- **Rota:** which team is on each date. *Fill rota* rotates the teams in order for 1–8 weeks.
+- **Shift times:** weekday 18:00–07:30, holiday 08:00–08:00. Weekend days and public holiday dates use the holiday shift.
+
+The app always opens on the shift running now (at 03:00 that is the shift that started at 18:00 the evening before). Use ‹ › to look at other nights.
+
+**Swaps:** on the Board a second on-call taps *Swap* on a doctor and picks who covers. Their tasks and roles move across, and every change is logged on that shift.
+**Handover:** the next shift shows a banner to carry over anything unfinished from the previous one.
+
 ## Roles
 Each phone chooses **who you are** (button at the top). The app then adapts:
 - **Third on-call:** read-only overview of the whole shift, including help requests.
