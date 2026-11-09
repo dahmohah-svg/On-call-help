@@ -679,9 +679,11 @@ function role() { const d = meDoc(); if (d) return d.tier; const sf = meStaff();
     const night = R.shifts[S.date]; const onDay = night ? night.doctors.some(x => x.id === sf.id) : (R.teams.find(t => t.id === R.rota[S.date]) || { members: [] }).members.some(m => m.staffId === sf.id);
     if (onDay && (sf.tier === 'second' || sf.tier === 'third')) return sf.tier;
   } if (sf) return sf.tier === 'third' ? 'third' : 'offduty'; return ui.meId === 'observer' ? 'third' : 'none'; }
-function canEdit() { const r = role(); return r !== 'third' && r !== 'offduty'; }
-function canManage() { const r = role(); const sf = meStaff(); return r === 'none' || r === 'second' || (!!sf && sf.tier === 'second'); }
-function canAssign() { const r = role(); return r === 'second' || r === 'none'; }
+// on a team board where anyone has a PIN, only a phone signed in with its own PIN can change things
+function verified() { return !sync.code || !sync.locked || (!!sync.token && sync.tokenStaff === ui.meId); }
+function canEdit() { const r = role(); return r !== 'third' && r !== 'offduty' && verified(); }
+function canManage() { const r = role(); const sf = meStaff(); return (r === 'none' || r === 'second' || (!!sf && sf.tier === 'second')) && verified(); }
+function canAssign() { const r = role(); return (r === 'second' || r === 'none') && verified(); }
 function canEditTask(t) { return canEdit() && (!junior() || !t.doctorId || t.doctorId === ui.meId || t.postedBy === myName()); }
 function canStatus(t) { return canEdit() && (!junior() || t.doctorId === ui.meId); }
 function myName() { const d = meDoc() || meStaff(); return d ? d.name : (ui.meId === 'observer' ? 'Observer' : ''); }
@@ -800,7 +802,7 @@ function viewBoard() {
   const unassigned = S.tasks.filter(t => t.status !== 'done' && !t.doctorId);
   const coord = S.doctors.find(d => d.coordinator); const lp = S.doctors.filter(d => d.listPrep);
   const thirds = S.doctors.filter(d => d.tier === 'third');
-  let h = exampleBanner() + nowBar() + addButtons() + carryBanner() + helpQueue(false) + shiftTeamPanel();
+  let h = exampleBanner() + pinBanner() + nowBar() + addButtons() + carryBanner() + helpQueue(false) + shiftTeamPanel();
   if (S.session !== 'am' && !S.plan && canAssign()) h += `<div class="banner"><span>No coverage plan for this shift yet: OT turns for 2nd on-calls, phone and OT turns for 1st on-calls.</span><button class="btn sm primary" data-act="tab" data-tab="plan">Make it</button></div>`;
   if (S.session !== 'am') h += `<div class="banner">${thirds.length ? `<span><b>3rd on-call:</b> ${thirds.map(d => esc(d.name) + (d.thirdRole ? ' (' + esc(THIRD_ROLE[d.thirdRole]) + ')' : '') + (d.ext ? ` · ext <span class="num">${esc(d.ext)}</span>` : '')).join(', ')}</span>` : ''}<span><b>Coordinator:</b> ${coord ? esc(coord.name) + (coord.ext ? ` · ext <span class="num">${esc(coord.ext)}</span>` : '') : '<span class="late">not set</span>'}</span>
     <span><b>List prep:</b> ${lp.length ? lp.map(d => esc(d.name) + ` (${d.tier === 'second' ? '2nd' : '1st'})`).join(', ') : '<span class="late">not set</span>'}</span></div>`;
@@ -945,9 +947,10 @@ function viewTeam() {
     <td><select data-act="sf-tier" data-id="${x.id}" aria-label="Grade" ${dis}>${[['third', '3rd on-call'], ['second', '2nd on-call'], ['first', '1st on-call'], ['trainee', 'Trainee']].map(([k, l]) => `<option value="${k}" ${x.tier === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
     <td style="text-align:center"><input type="checkbox" data-act="sf-obs" data-id="${x.id}" ${x.obs ? 'checked' : ''} ${x.tier !== 'first' ? 'disabled' : dis} aria-label="Usually Obs and Gyne"></td>
     <td><input type="text" id="se-${x.id}" value="${esc(x.ext)}" data-act="sf-ext" data-id="${x.id}" style="min-width:70px;width:80px" aria-label="Extension or bleep" ${dis}></td>
+    ${sync.code ? `<td>${sync.pins.has(x.id) ? `<span class="chip">Set</span>${canManage() ? ` <button class="btn sm ghost" data-act="pin-reset" data-id="${x.id}">Reset</button>` : ''}` : '<span class="empty">—</span>'}</td>` : ''}
     <td>${canManage() ? `<button class="btn sm danger ghost" data-act="sf-del" data-id="${x.id}">Remove</button>` : ''}</td></tr>`;
   h += `<section class="panel"><div class="row"><h2>All staff · ${R.staff.length}</h2></div>
-    <div class="scroll-x"><table class="team-t"><thead><tr><th>Name</th><th>Grade</th><th>Obs/Gyne</th><th>Ext / bleep</th><th></th></tr></thead><tbody>${R.staff.map(sRow).join('')}</tbody></table></div>
+    <div class="scroll-x"><table class="team-t"><thead><tr><th>Name</th><th>Grade</th><th>Obs/Gyne</th><th>Ext / bleep</th>${sync.code ? '<th>PIN</th>' : ''}<th></th></tr></thead><tbody>${R.staff.map(sRow).join('')}</tbody></table></div>
     ${canManage() ? `<div class="row"><button class="btn sm" data-act="sf-add" data-tier="third">+ Third on-call</button><button class="btn sm" data-act="sf-add" data-tier="second">+ Second on-call</button><button class="btn sm" data-act="sf-add" data-tier="first">+ First on-call</button><button class="btn sm" data-act="sf-add" data-tier="obs">+ OB/GYN</button><button class="btn sm" data-act="sf-add" data-tier="trainee">+ Trainee</button></div>` : ''}</section>`;
   // shift times and holidays
   const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -976,6 +979,7 @@ function viewTeam() {
     <li><b>First on-calls</b> post what they receive in <i>My work</i> and mark it To do, In progress, Done or Need help.</li>
     <li><b>List preparation</b> goes to the doctor ticked for list prep on that shift.</li>
     <li>Tasks with a fixed doctor or start time, and tasks in progress or done, are never moved.</li></ul></section>`;
+  h += viewHistory();
   h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">${sync.code ? 'This board is shared with your department. Deleting here deletes it for everyone.' : 'Everything is saved in this browser only.'} Shifts older than 60 days are cleared automatically. Use bed and ward, never patient names or record numbers.</p>
     <div class="row" ${canManage() ? '' : 'hidden'}>${ui.confirmReset ? `<div class="confirm">${sync.code ? 'Delete the rota, teams, staff and all shifts for everyone?' : 'Delete everything on this device?'} <button class="btn sm danger" data-act="reset-yes">Delete everything</button><button class="btn sm" data-act="reset-no">Keep</button></div>` : `<button class="btn sm danger ghost" data-act="reset">Delete everything</button>`}</div></section>`;
   return h;
@@ -1106,6 +1110,14 @@ const sync = { code: readPref('board') || null, version: 0, base: null, dirty: f
   status: 'local', msg: '', updatedBy: '', updatedAt: null, joinPrefill: '', needRender: false };
 try { const p = JSON.parse(readPref('sync') || 'null'); if (p && sync.code && p.code === sync.code) Object.assign(sync, { version: p.version || 0, base: p.base || null, dirty: !!p.dirty }); } catch (e) {}
 let pushT = null;
+// PIN sign-in on this phone for the current team board
+try { const a = JSON.parse(readPref('auth') || 'null'); if (a && a.code === sync.code) { sync.token = a.token; sync.tokenStaff = a.staff; } } catch (e) {}
+sync.pins = new Set(); sync.locked = false;
+function saveAuth() { writePref('auth', sync.token ? JSON.stringify({ code: sync.code, token: sync.token, staff: sync.tokenStaff }) : ''); }
+async function refreshPins() {
+  if (!sync.code) return;
+  try { const list = await rpc('oncall_pin_status', { p_code: sync.code }); sync.pins = new Set(list || []); sync.locked = sync.pins.size > 0; safeRender(); } catch (e) {}
+}
 const clone = o => JSON.parse(JSON.stringify(o));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function persistSync() { writePref('sync', JSON.stringify({ code: sync.code, version: sync.version, base: sync.base, dirty: sync.dirty })); }
@@ -1173,8 +1185,9 @@ async function push() {
   if (!sync.code || sync.busy || !sync.dirty) return;
   sync.busy = true; const snap = clone(R); let again = false;
   try {
-    const res = await rpc('oncall_save_board', { p_code: sync.code, p_state: snap, p_base: sync.version, p_by: myName() || null });
-    if (res.ok) { sync.version = Number(res.version); sync.base = snap; sync.updatedBy = myName(); sync.updatedAt = res.updated_at; sync.dirty = !same(R, snap); setStatus('live'); again = sync.dirty; }
+    const res = await rpc('oncall_save_board2', { p_code: sync.code, p_token: sync.token || null, p_state: snap, p_base: sync.version, p_by: myName() || null });
+    if (res.signin) { sync.locked = true; setStatus('error', 'Enter your PIN to save'); sync.busy = false; persistSync(); refreshPins(); return; }
+    if (res.ok) { sync.version = Number(res.version); sync.base = snap; sync.updatedBy = res.updated_by || myName(); sync.updatedAt = res.updated_at; sync.dirty = !same(R, snap); setStatus('live'); again = sync.dirty; }
     else if (res.missing) { setStatus('error', 'Team board not found'); }
     else { mergeIn(res); setStatus('live'); again = sync.dirty; }
   } catch (e) { setStatus(e.server ? 'error' : 'offline', e.server ? 'Sync error' : ''); }
@@ -1214,10 +1227,12 @@ async function joinBoard(raw) {
     if (!row) { toast('No team board with that code. Check it and try again.'); return; }
     sync.code = code; writePref('board', code); R = migrate(row.state) || blankRoot(); ui.shiftDate = currentShiftDate(); pointShift(); adopt(row); sync.dirty = false; sync.joinPrefill = '';
     save(); persistSync(); setStatus('live'); render(); toast('Joined the team board');
+    if (sync.tokenStaff && (readPref('auth') || '').indexOf(code) < 0) { sync.token = null; sync.tokenStaff = null; }
+    await refreshPins();
     if (!meStaff() && ui.meId !== 'observer') showWho();
   } catch (e) { toast(e.server ? 'Could not join: ' + e.message : 'No connection to the team server. Try again with signal.'); }
 }
-function leaveBoard() { sync.code = null; sync.dirty = false; sync.base = null; sync.version = 0; writePref('board', ''); persistSync(); setStatus('local'); render(); toast('Left the team board. A copy stays on this device.'); }
+function leaveBoard() { sync.token = null; sync.tokenStaff = null; saveAuth(); sync.pins = new Set(); sync.locked = false; sync.code = null; sync.dirty = false; sync.base = null; sync.version = 0; writePref('board', ''); persistSync(); setStatus('local'); render(); toast('Left the team board. A copy stays on this device.'); }
 function copyText(txt, selectEl) {
   const fallback = () => { if (selectEl) { selectEl.focus(); selectEl.select ? selectEl.select() : null; } toast('Selected – copy it with your device'); };
   try { navigator.clipboard.writeText(txt).then(() => toast('Copied'), fallback); } catch (e) { fallback(); }
@@ -1264,6 +1279,7 @@ function viewMine() {
     if (d.obs) mine.push(`OB/GYN all shift`);
     h += `<div class="nowbar"><b class="k">My turns</b>${mine.length ? mine.map(x => `<span>${esc(x)}</span>`).join('') : '<span>None in the coverage plan</span>'}</div>`;
   }
+  h = pinBanner() + h;
   h += helpQueue(true);
   h += `<section style="display:grid;gap:8px"><h2>Post a case or duty you received</h2><div class="row">` + Object.entries(TYPES).map(([k, v]) =>
     `<button class="btn ${v.cls}" data-act="new" data-type="${k}"><span class="dot"></span>${v.short}</button>`).join('') + `</div></section>`;
@@ -1277,6 +1293,57 @@ function viewMine() {
   if (done.length) h += `<details class="done-list"><summary>Done this shift · ${done.length}</summary><div class="tasks">${done.map(t => taskItem(t, { hideDoc: true })).join('')}</div></details>`;
   return h;
 }
+function showPin(id, err) {
+  const sf = staffOf(id); if (!sf) return;
+  const has = sync.pins.has(id);
+  $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="pinForm" data-id="${esc(id)}" autocomplete="off">
+    <div class="row"><h3>${has ? 'Enter your PIN' : 'Set your PIN'}</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
+    <p style="margin:0">${has ? `Signing in as <b>${esc(sf.name)}</b>.` : `Choose a 4–6 digit PIN for <b>${esc(sf.name)}</b>. After that, only someone with this PIN can make changes as ${esc(sf.name)}.`}</p>
+    <div class="grid2"><label class="f">${has ? 'PIN' : 'New PIN'}<input id="pin1" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required></label>
+      ${has ? '' : '<label class="f">Repeat PIN<input id="pin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required></label>'}</div>
+    ${err ? `<p class="late" style="margin:0">${esc(err)}</p>` : ''}
+    <p class="empty" style="margin:0">${has ? 'Forgot it? Ask a second on-call to reset your PIN under Rota &amp; teams.' : 'Not you? Close this and pick your own name.'}</p>
+    <div class="row"><span class="spacer"></span><button type="button" class="btn" data-act="close">Cancel</button><button type="submit" class="btn primary">${has ? 'Sign in' : 'Save PIN'}</button></div></form></div>`;
+  const i = document.getElementById('pin1'); if (i) i.focus();
+}
+async function pinSubmit(id) {
+  const p1 = (document.getElementById('pin1') || {}).value || '', p2El = document.getElementById('pin2');
+  if (!/^[0-9]{4,6}$/.test(p1)) { showPin(id, 'Use 4 to 6 digits.'); return; }
+  if (p2El && p2El.value !== p1) { showPin(id, 'The two PINs do not match.'); return; }
+  try {
+    const res = await rpc(sync.pins.has(id) ? 'oncall_pin_login' : 'oncall_pin_set', { p_code: sync.code, p_staff: id, p_pin: p1 });
+    if (res.nopin) { sync.pins.delete(id); showPin(id, 'Your PIN was reset. Choose a new one.'); return; }
+    if (!res.ok) { await refreshPins(); showPin(id, res.error || 'That did not work.'); return; }
+    sync.token = res.token; sync.tokenStaff = id; saveAuth(); sync.pins.add(id); sync.locked = true;
+    becomeMe(id); toast('Signed in as ' + (staffOf(id) || {}).name);
+    if (sync.dirty) push();
+  } catch (e) { showPin(id, 'No connection to the team server. Try again with signal.'); }
+}
+function becomeMe(id) {
+  ui.meId = id; writePref('meId', id); $layer.innerHTML = ''; ui.shiftDate = currentShiftDate(); pointShift();
+  const r = role(); ui.tab = junior() ? 'mine' : r === 'third' ? 'board' : (ui.tab === 'team' ? 'board' : ui.tab); writePref('tab', ui.tab);
+  render(); window.scrollTo(0, 0);
+}
+async function signOut() {
+  if (sync.token) { try { await rpc('oncall_sign_out', { p_code: sync.code, p_token: sync.token }); } catch (e) {} }
+  sync.token = null; sync.tokenStaff = null; saveAuth(); ui.meId = ''; writePref('meId', ''); $layer.innerHTML = ''; render(); toast('Signed out on this phone');
+}
+function pinBanner() {
+  if (!sync.code || !meStaff() || (sync.token && sync.tokenStaff === ui.meId)) return '';
+  return sync.locked
+    ? `<div class="banner" style="border:2px solid var(--accent)"><span><b>Enter your PIN to make changes as ${esc(myName())}.</b> Until then this phone can only view.</span><button class="btn sm primary" data-act="pin-open">Enter PIN</button></div>`
+    : `<div class="banner"><span><b>Protect your name:</b> set a PIN so nobody else can make changes as ${esc(myName())}.</span><button class="btn sm primary" data-act="pin-open">Set PIN</button></div>`;
+}
+function viewHistory() {
+  if (!sync.code) return '';
+  const list = ui.hist;
+  const fmtAt = a => new Date(a).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return `<section class="panel"><div class="row"><h2>History &amp; undo</h2><span class="spacer"></span><button class="btn sm" data-act="hist-load">${list ? 'Refresh' : 'Show history'}</button></div>
+    <p class="empty" style="margin:0">Earlier versions of the whole board are kept for 14 days: one each time a different person makes a change, every 10 minutes, and before anything large is deleted. A second or third on-call can put the board back to any of them.</p>
+    ${list ? (list.length ? `<div class="scroll-x"><table class="team-t"><thead><tr><th>Board as it was</th><th>Last change by</th><th>Staff</th><th></th></tr></thead><tbody>${list.map(h => `<tr><td class="num">${esc(fmtAt(h.at))}</td><td>${esc(h.by || '—')}</td><td class="num">${h.staff}</td>
+      <td>${ui.histConfirm === h.id ? `<span class="confirm">Restore? <button class="btn sm danger" data-act="hist-yes" data-hid="${h.id}">Restore</button><button class="btn sm" data-act="hist-no">Keep</button></span>` : canManage() ? `<button class="btn sm" data-act="hist-restore" data-hid="${h.id}">Restore</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+      <p class="empty" style="margin:0">Restoring also keeps the current board in this list, so a restore can be undone too.</p>` : '<p class="empty" style="margin:0">No earlier versions yet. They appear as the team makes changes.</p>') : ''}</section>`;
+}
 function showWho() {
   const btn = d => `<button class="btn" data-act="setme" data-id="${d.id}" aria-pressed="${ui.meId === d.id}">${esc(d.name)}</button>`;
   const grp = (title, ds) => ds.length ? `<h2>${title}</h2><div class="who-list">${ds.map(btn).join('')}</div>` : '';
@@ -1285,7 +1352,8 @@ function showWho() {
     <p class="empty" style="margin:0">Pick your name once. The app then shows your own work on every shift you are rostered on. ● = on the shift you are viewing.</p>
     ${grp('Third on-call · overseeing', D.filter(d => d.tier === 'third'))}${grp('Second on-call', D.filter(d => d.tier === 'second'))}${grp('First on-call', D.filter(d => d.tier === 'first' && !d.obs))}${grp('First on-call · OB/GYN', D.filter(d => d.obs))}${grp('Trainee', D.filter(d => d.tier === 'trainee'))}
     ${D.length ? '' : '<p class="empty">No staff added yet. Add them under Rota &amp; teams first.</p>'}
-    <div class="who-list"><button class="btn" data-act="setme" data-id="observer" aria-pressed="${ui.meId === 'observer'}">Just watching (read-only)</button></div></div></div>`;
+    <div class="who-list"><button class="btn" data-act="setme" data-id="observer" aria-pressed="${ui.meId === 'observer'}">Just watching (read-only)</button>${sync.token ? '<button class="btn" data-act="signout">Sign out on this phone</button>' : ''}</div>
+    ${sync.code && sync.locked ? '<p class="empty" style="margin:0">You will be asked for your PIN.</p>' : ''}</div></div>`;
 }
 function setTaskStatus(t, v) {
   if (!t || t.status === v) return;
@@ -1315,8 +1383,8 @@ document.addEventListener('click', e => {
   const a = el.dataset.act; const id = el.dataset.id;
   if (a === 'close-bg' && e.target !== el) return;
   const t = id ? S.tasks.find(x => x.id === id) : null;
-  const viewOnly = new Set(['demo', 'welcome', 'tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
-  const manage = new Set(['fill', 'team-add', 'team-del', 'tm-del', 'sf-add', 'sf-del', 'hol-add', 'hol-del', 'reset', 'reset-yes']);
+  const viewOnly = new Set(['signout', 'pin-open', 'hist-load', 'hist-no', 'demo', 'welcome', 'tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
+  const manage = new Set(['pin-reset', 'hist-restore', 'hist-yes', 'fill', 'team-add', 'team-del', 'tm-del', 'sf-add', 'sf-del', 'hol-add', 'hol-del', 'reset', 'reset-yes']);
   if (manage.has(a)) { if (!canManage()) { toast('Only second on-calls can change the rota and teams'); return; } }
   else if (!canEdit() && !viewOnly.has(a)) { toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
   if (a === 'edit' && t && !canEditTask(t)) { toast("Only the second on-call can change another doctor's task"); return; }
@@ -1374,9 +1442,25 @@ document.addEventListener('click', e => {
     case 'hol-add': { const v = document.getElementById('holDate').value; if (!v) { toast('Pick a date first'); break; } if (!R.settings.holidays.includes(v)) R.settings.holidays.push(v); const sh = R.shifts[v]; if (sh) rewindow(sh); commit(); toast(dayLabel(v) + ' is now a holiday shift'); break; }
     case 'hol-del': { const v = el.dataset.date; R.settings.holidays = R.settings.holidays.filter(x => x !== v); const sh = R.shifts[v]; if (sh) rewindow(sh); commit(); break; }
     case 'setme': {
-      ui.meId = id; writePref('meId', id); $layer.innerHTML = ''; ui.shiftDate = currentShiftDate(); pointShift();
-      const r = role(); ui.tab = junior() ? 'mine' : r === 'third' ? 'board' : (ui.tab === 'team' ? 'board' : ui.tab); writePref('tab', ui.tab);
-      render(); window.scrollTo(0, 0); toast(meDoc() ? 'You are ' + meDoc().name : 'Observer view – read-only'); break;
+      if (id === 'observer') { if (sync.token) { sync.token = null; sync.tokenStaff = null; saveAuth(); } becomeMe(id); toast('Observer view – read-only'); break; }
+      if (sync.code && !(sync.token && sync.tokenStaff === id) && (sync.locked || sync.pins.size === 0)) { showPin(id); break; }
+      becomeMe(id); toast('You are ' + myName()); break;
+    }
+    case 'signout': signOut(); break;
+    case 'pin-open': if (ui.meId && ui.meId !== 'observer') showPin(ui.meId); break;
+    case 'pin-reset': {
+      (async () => { try { const res = await rpc('oncall_pin_reset', { p_code: sync.code, p_token: sync.token, p_staff: id });
+        toast(res.ok ? `PIN reset for ${(staffOf(id) || {}).name} – they set a new one next time` : res.error); await refreshPins(); } catch (e) { toast('No connection to the team server.'); } })();
+      break;
+    }
+    case 'hist-load': (async () => { try { ui.hist = await rpc('oncall_history_list', { p_code: sync.code }); ui.histConfirm = null; render(); } catch (e) { toast('No connection to the team server.'); } })(); break;
+    case 'hist-restore': ui.histConfirm = Number(el.dataset.hid); render(); break;
+    case 'hist-no': ui.histConfirm = null; render(); break;
+    case 'hist-yes': {
+      (async () => { try { const res = await rpc('oncall_history_restore', { p_code: sync.code, p_token: sync.token || null, p_id: Number(el.dataset.hid) });
+        if (!res.ok) { toast(res.error || 'Could not restore'); return; }
+        sync.dirty = false; ui.histConfirm = null; await pull(true); ui.hist = await rpc('oncall_history_list', { p_code: sync.code }); render(); toast('Board restored'); } catch (e) { toast('No connection to the team server.'); } })();
+      break;
     }
     case 'setst': setTaskStatus(t, el.dataset.v); break;
     case 'ihelp': t.helpBy = myName() || 'Someone'; commit(); toast('The team can see you are going'); break;
@@ -1488,7 +1572,10 @@ document.addEventListener('change', e => {
   }
 });
 
-document.addEventListener('submit', e => { if (e.target.id === 'taskForm') { e.preventDefault(); commitDraft(); } });
+document.addEventListener('submit', e => {
+  if (e.target.id === 'taskForm') { e.preventDefault(); commitDraft(); }
+  if (e.target.id === 'pinForm') { e.preventDefault(); pinSubmit(e.target.dataset.id); }
+});
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $layer.innerHTML) { draft = null; $layer.innerHTML = ''; } });
 setInterval(() => { if (ui.tab === 'timeline' && !draft) { const n = $main.querySelectorAll('.now'); const L = shiftLen(); const nr = nowRel(); if (nr >= L) n.forEach(x => x.hidden = true); else n.forEach(x => x.style.left = (nr / 60 * 84) + 'px'); } }, 60000);
 
@@ -1502,6 +1589,7 @@ if (ui.meId && ui.meId !== 'observer' && !staffOf(ui.meId)) ui.meId = '';
 if (!readPref('tab') && junior()) ui.tab = 'mine';
 render(); renderSyncChip();
 if (sync.code && !ui.meId && R.staff.length) showWho();
+if (sync.code) { refreshPins(); setInterval(() => { if (!document.hidden) refreshPins(); }, 60000); }
 // roll over to the next shift when the current one ends, unless someone is looking at another date
 setInterval(() => { const c = currentShiftDate(); if (ui.autoDate !== c) { const wasCurrent = ui.shiftDate === ui.autoDate; ui.autoDate = c; if (wasCurrent && !draft) { ui.shiftDate = c; pointShift(); safeRender(); } } }, 60000);
 ui.autoDate = currentShiftDate();

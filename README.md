@@ -47,6 +47,11 @@ Each phone chooses **who you are** (button at the top). The app then adapts:
 - **Second on-call:** assigns any task to a doctor from the task card, and posts each first on-call *Inside OT* (any or a named theatre) or *Outside OT*.
 - **First on-call:** *My work* shows their own cases and duties. They post what they receive and mark each one To do, In progress, Done or Need help. Help requests appear at the top of everyone's board, and anyone can tap *I'll go*.
 
+## PINs and history
+- **Personal PIN:** the first time someone picks their name on a team board they set a 4–6 digit PIN; after that the name needs that PIN. Once anyone on the board has a PIN, only phones signed in with their own PIN can make changes, and the server records who really made each change. Five wrong tries lock the name for 15 minutes. A second or third on-call can reset someone's PIN under *Rota & teams*.
+- **History & undo:** the server keeps earlier versions of the board for 14 days (each time a different person changes it, every 10 minutes, and before anything large is deleted). A second or third on-call can restore any of them under *Rota & teams → History & undo*; the board being replaced is kept too.
+- Server side: `supabase/oncall_history_and_pins.sql`.
+
 ## Shared team board
 In **Team & shift → Share with the team**, one doctor taps **Create team board** and sends the link to the team chat. Everyone who opens the link sees the same board, and changes appear on other phones within a few seconds. Edits made at the same time on different phones are merged, and the app keeps working offline and syncs when signal returns.
 
