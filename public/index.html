@@ -195,6 +195,14 @@ label.f { display: grid; gap: 3px; font-size: 12px; font-weight: 700; color: var
 .typepick button[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 18%, var(--surface)); border-color: var(--c); }
 pre.handover { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px; font-family: var(--f-mono); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 50vh; overflow: auto; }
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 16px; border-radius: 99px; font-weight: 700; font-size: 14px; z-index: 30; }
+.sync-chip { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); color: var(--muted); border: 0; }
+.sync-chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.sync-chip.live { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
+.sync-chip.offline { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.sync-chip.error { color: var(--crit); background: color-mix(in srgb, var(--crit) 13%, transparent); }
+.code { font-family: var(--f-mono); font-size: 24px; font-weight: 500; letter-spacing: .08em; }
+.share-box { display: grid; gap: 10px; padding: 12px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); }
+.share-box input { font-family: var(--f-mono); font-size: 13px; }
 .confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--crit); }
 @media (prefers-reduced-motion: no-preference) { .btn, .seg button, nav.tabs button { transition: background .15s, border-color .15s, color .15s; } }
 </style>
@@ -202,6 +210,7 @@ pre.handover { background: var(--bg); border: 1px solid var(--line); border-radi
 <header class="bar">
   <div class="wrap bar-in">
     <div class="brand">On-Call Board <small id="shiftLabel" class="num"></small></div>
+    <button class="sync-chip" id="syncChip" data-act="goteam" hidden></button>
     <div class="bar-stats" id="stats"></div>
   </div>
   <div class="wrap">
@@ -546,6 +555,7 @@ function viewTeam() {
     <td><button class="btn sm danger ghost" data-act="ddel" data-id="${d.id}">Remove</button></td></tr>`;
   const n2 = S.doctors.filter(d => d.tier === 'second').length, n1 = S.doctors.filter(d => d.tier === 'first' && !d.obs).length, nO = S.doctors.filter(d => d.obs).length;
   let h = exampleBanner();
+  h += viewShare();
   h += `<section class="panel"><h2>Shift</h2><div class="grid2">
     <label class="f">Date<input type="date" id="sh-date" data-act="shdate" value="${esc(sh.date)}"></label>
     <label class="f">Starts at<input type="time" id="sh-start" data-act="shstart" value="${esc(sh.start)}"></label>
@@ -563,8 +573,8 @@ function viewTeam() {
     <li><b>List preparation</b> goes to the doctor ticked for list prep (first or second on-call).</li>
     <li>Higher priority is placed first, then earliest “not before” time. Doctors marked <i>Off / away</i> get nothing; <i>Tied up</i> doctors are used last.</li>
     <li>Tasks with a fixed doctor or start time, and tasks in progress or done, are never moved.</li></ul></section>`;
-  h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">Everything is saved in this browser only. Use bed and ward rather than patient names or record numbers.</p>
-    <div class="row">${ui.confirmReset ? `<div class="confirm">Delete all tasks and the team on this device? <button class="btn sm danger" data-act="reset-yes">Delete everything</button><button class="btn sm" data-act="reset-no">Keep</button></div>` : `<button class="btn sm" data-act="newshift">New shift (keep team, clear tasks)</button><button class="btn sm danger ghost" data-act="reset">Delete everything</button>`}</div></section>`;
+  h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">${sync.code ? 'This board is shared with your team. Deleting here deletes it for everyone.' : 'Everything is saved in this browser only.'} Use bed and ward rather than patient names or record numbers.</p>
+    <div class="row">${ui.confirmReset ? `<div class="confirm">${sync.code ? 'Delete all tasks and the team for everyone on this board?' : 'Delete all tasks and the team on this device?'} <button class="btn sm danger" data-act="reset-yes">Delete everything</button><button class="btn sm" data-act="reset-no">Keep</button></div>` : `<button class="btn sm" data-act="newshift">New shift (keep team, clear tasks)</button><button class="btn sm danger ghost" data-act="reset">Delete everything</button>`}</div></section>`;
   return h;
 }
 
@@ -630,7 +640,7 @@ function commitDraft() {
   if (!t.fixDoctor && t.status === 'pending') { t.doctorId = null; t.start = null; }
   if (t.fixDoctor && !t.fixStart && t.status === 'pending') t.start = null;
   if (isNew) S.tasks.push(t); else { const i = S.tasks.findIndex(x => x.id === t.id); if (i >= 0) S.tasks[i] = t; }
-  autoSchedule(); save(); draft = null; ui.confirmDel = false; renderSheet(); render();
+  autoSchedule(); draft = null; ui.confirmDel = false; renderSheet(); commit();
   const d = doc(t.doctorId);
   toast(d ? `${TYPES[t.type].short} → ${d.name} at ${fmt(S.tasks.find(x => x.id === t.id).start)}` : 'Saved – no doctor available');
 }
@@ -665,10 +675,136 @@ function showText(title, text) {
     <pre class="handover" id="htext" tabindex="0">${esc(text)}</pre><div class="row"><span class="empty">Paste into the team group chat.</span><span class="spacer"></span><button class="btn primary" data-act="copy">Copy text</button></div></div></div>`;
 }
 
+/* ---------- team sync (shared live board) ---------- */
+const SYNC_URL = 'https://wzezqpesoaecnmclrmaj.supabase.co';
+const SYNC_KEY = 'sb_publishable_Xc8_XxgVEh-nNM4q0Lt22w_msjuc-rC';   // publishable key: safe in the browser; the table is only reachable through team-code functions
+const sync = { code: readPref('board') || null, me: readPref('me') || '', version: 0, base: null, dirty: false, busy: false,
+  status: 'local', msg: '', updatedBy: '', updatedAt: null, joinPrefill: '', needRender: false };
+try { const p = JSON.parse(readPref('sync') || 'null'); if (p && sync.code && p.code === sync.code) Object.assign(sync, { version: p.version || 0, base: p.base || null, dirty: !!p.dirty }); } catch (e) {}
+let pushT = null;
+const clone = o => JSON.parse(JSON.stringify(o));
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function persistSync() { writePref('sync', JSON.stringify({ code: sync.code, version: sync.version, base: sync.base, dirty: sync.dirty })); }
+function normCode(c) { const x = String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); return x.length >= 10 ? x.match(/.{1,4}/g).join('-') : ''; }
+function newCode() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let out = ''; crypto.getRandomValues(new Uint8Array(12)).forEach(b => out += a[b % 32]); return normCode(out); }
+function shareLink() { return location.origin + location.pathname + '?join=' + encodeURIComponent(sync.code); }
+async function rpc(fn, args) {
+  const r = await fetch(`${SYNC_URL}/rest/v1/rpc/${fn}`, { method: 'POST', headers: { apikey: SYNC_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
+  if (!r.ok) { let m = ''; try { m = (await r.json()).message; } catch (e) {} const err = new Error(m || ('HTTP ' + r.status)); err.server = true; throw err; }
+  return r.json();
+}
+function ago(ts) { if (!ts) return ''; const m = Math.round((Date.now() - new Date(ts)) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago'; }
+function setStatus(st, msg) { sync.status = st; sync.msg = msg || ''; renderSyncChip(); }
+function renderSyncChip() {
+  const el = document.getElementById('syncChip'); if (!el) return;
+  if (!sync.code) { el.hidden = true; return; }
+  el.hidden = false; el.className = 'sync-chip ' + sync.status;
+  el.textContent = sync.status === 'live' ? `Team board · live${sync.updatedBy ? ' · ' + sync.updatedBy + ' ' + ago(sync.updatedAt) : ''}`
+    : sync.status === 'offline' ? (sync.dirty ? 'Offline · changes will sync' : 'Offline · showing last saved') : sync.status === 'error' ? sync.msg : 'Connecting…';
+}
+function safeRender() {
+  const a = document.activeElement;
+  if (a && $main.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox' && a.type !== 'radio') { sync.needRender = true; return; }
+  render();
+}
+function markDirty() {
+  if (!sync.code) return;
+  sync.dirty = true; persistSync(); renderSyncChip();
+  clearTimeout(pushT); pushT = setTimeout(push, 300);
+}
+// Record-level three-way merge: keep the other phones' changes, apply ours on top.
+function mergeColl(base, mine, theirs) {
+  const b = new Map((base || []).map(x => [x.id, x])), m = new Map((mine || []).map(x => [x.id, x]));
+  const out = new Map((theirs || []).map(x => [x.id, x]));
+  for (const [id, x] of m) if (!b.has(id) || !same(b.get(id), x)) out.set(id, x);
+  for (const id of b.keys()) if (!m.has(id)) out.delete(id);
+  return [...out.values()];
+}
+function merge(base, mine, theirs) {
+  base = base || theirs;
+  return { ...theirs, example: !!(mine.example && theirs.example), shift: same(base.shift, mine.shift) ? theirs.shift : mine.shift,
+    doctors: mergeColl(base.doctors, mine.doctors, theirs.doctors), tasks: mergeColl(base.tasks, mine.tasks, theirs.tasks) };
+}
+function adopt(row) { sync.version = Number(row.version); sync.base = clone(row.state); sync.updatedBy = row.updated_by || ''; sync.updatedAt = row.updated_at || null; }
+function mergeIn(row) {
+  const merged = merge(sync.base, S, row.state);
+  S = merged; autoSchedule(); adopt(row);
+  sync.dirty = !same(S, row.state); save(); safeRender();
+}
+async function push() {
+  if (!sync.code || sync.busy || !sync.dirty) return;
+  sync.busy = true; const snap = clone(S); let again = false;
+  try {
+    const res = await rpc('oncall_save_board', { p_code: sync.code, p_state: snap, p_base: sync.version, p_by: sync.me || null });
+    if (res.ok) { sync.version = Number(res.version); sync.base = snap; sync.updatedBy = sync.me; sync.updatedAt = res.updated_at; sync.dirty = !same(S, snap); setStatus('live'); again = sync.dirty; }
+    else if (res.missing) { setStatus('error', 'Team board not found'); }
+    else { mergeIn(res); setStatus('live'); again = sync.dirty; }
+  } catch (e) { setStatus(e.server ? 'error' : 'offline', e.server ? 'Sync error' : ''); }
+  sync.busy = false; persistSync();
+  if (again) setTimeout(push, 50);
+}
+async function pull(force) {
+  if (!sync.code || sync.busy) return;
+  sync.busy = true;
+  try {
+    let fetchIt = force;
+    if (!fetchIt) { const v = await rpc('oncall_board_version', { p_code: sync.code }); if (v == null) { setStatus('error', 'Team board not found'); return; } fetchIt = Number(v) !== sync.version; }
+    if (fetchIt) {
+      const row = (await rpc('oncall_get_board', { p_code: sync.code }))[0];
+      if (!row) { setStatus('error', 'Team board not found'); return; }
+      if (Number(row.version) >= sync.version) {
+        if (sync.dirty) mergeIn(row); else { S = row.state; adopt(row); save(); safeRender(); }
+      }
+    }
+    setStatus('live');
+  } catch (e) { setStatus(e.server ? 'error' : 'offline', e.server ? 'Sync error' : ''); }
+  finally { sync.busy = false; persistSync(); }
+  if (sync.dirty) push();
+}
+async function createBoard() {
+  const code = newCode();
+  try {
+    await rpc('oncall_create_board', { p_code: code, p_state: S, p_by: sync.me || null });
+    sync.code = code; writePref('board', code); sync.version = 1; sync.base = clone(S); sync.dirty = false; sync.updatedBy = sync.me; sync.updatedAt = new Date().toISOString();
+    persistSync(); setStatus('live'); render(); toast('Team board created – share the link');
+  } catch (e) { toast(e.server ? 'Could not create the board: ' + e.message : 'No connection to the team server. Try again with signal.'); }
+}
+async function joinBoard(raw) {
+  const code = normCode(raw); if (!code) { toast('Enter the full team code, e.g. ABCD-EFGH-JKLM'); return; }
+  try {
+    const row = (await rpc('oncall_get_board', { p_code: code }))[0];
+    if (!row) { toast('No team board with that code. Check it and try again.'); return; }
+    sync.code = code; writePref('board', code); S = row.state; adopt(row); sync.dirty = false; sync.joinPrefill = '';
+    save(); persistSync(); setStatus('live'); render(); toast('Joined the team board');
+  } catch (e) { toast(e.server ? 'Could not join: ' + e.message : 'No connection to the team server. Try again with signal.'); }
+}
+function leaveBoard() { sync.code = null; sync.dirty = false; sync.base = null; sync.version = 0; writePref('board', ''); persistSync(); setStatus('local'); render(); toast('Left the team board. A copy stays on this device.'); }
+function copyText(txt, selectEl) {
+  const fallback = () => { if (selectEl) { selectEl.focus(); selectEl.select ? selectEl.select() : null; } toast('Selected – copy it with your device'); };
+  try { navigator.clipboard.writeText(txt).then(() => toast('Copied'), fallback); } catch (e) { fallback(); }
+}
+function viewShare() {
+  if (!sync.code) {
+    return `<section class="panel"><h2>Share with the team</h2>
+      <p class="empty" style="margin:0">Right now this board is only on this device. Create a team board so every doctor sees the same tasks live on their own phone, or join the board a colleague already created.</p>
+      <div class="row"><button class="btn primary" data-act="sync-create">Create team board</button></div>
+      <div class="row" style="align-items:flex-end"><label class="f" style="flex:1 1 220px">Team code<input id="joinCode" placeholder="ABCD-EFGH-JKLM" value="${esc(sync.joinPrefill)}" autocapitalize="characters" spellcheck="false"></label><button class="btn" data-act="sync-join">Join</button></div>
+      <p class="empty" style="margin:0">Joining replaces what is on this device with the team board.</p></section>`;
+  }
+  const meOpts = `<option value="">Choose your name</option>` + S.doctors.map(d => `<option ${sync.me === d.name ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
+  return `<section class="panel"><div class="row"><h2>Team board</h2><span class="spacer"></span><span class="sync-chip ${sync.status}">${sync.status === 'live' ? 'Live' : sync.status === 'offline' ? 'Offline' : sync.status === 'error' ? esc(sync.msg) : 'Connecting…'}</span></div>
+    <div class="share-box"><div class="row"><span class="code" id="codeText">${esc(sync.code)}</span><span class="spacer"></span><button class="btn sm" data-act="copy-code">Copy code</button></div>
+      <div class="row" style="flex-wrap:nowrap"><input class="f" id="shareLink" readonly value="${esc(shareLink())}" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--surface);color:var(--fg)"><button class="btn sm primary" data-act="copy-link">Copy link</button></div>
+      <p class="empty" style="margin:0">Send the link to the team group chat. Anyone with the link or code can see and edit this board, so keep it inside the team and use ward and bed, never patient names or record numbers.</p></div>
+    <div class="grid2"><label class="f">I am<select id="meSel" data-act="me">${meOpts}</select></label></div>
+    <p class="empty" style="margin:0">${sync.updatedBy || sync.updatedAt ? `Last change${sync.updatedBy ? ' by ' + esc(sync.updatedBy) : ''} ${ago(sync.updatedAt)}.` : ''} Changes appear on other phones within a few seconds.</p>
+    <div class="row"><button class="btn sm ghost" data-act="sync-leave">Leave team board on this device</button></div></section>`;
+}
+
 /* ---------- events ---------- */
 let toastT;
 function toast(msg) { clearTimeout(toastT); let el = document.querySelector('.toast'); if (!el) { el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); } el.textContent = msg; el.hidden = false; toastT = setTimeout(() => el.hidden = true, 2600); }
-function commit() { save(); render(); }
+function commit() { save(); render(); markDirty(); }
 
 document.getElementById('tabs').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]'); if (!b) return;
@@ -705,6 +841,12 @@ document.addEventListener('click', e => {
       break;
     }
     case 'filter': ui.filter = el.dataset.f; render(); break;
+    case 'goteam': ui.tab = 'team'; writePref('tab', 'team'); render(); window.scrollTo(0, 0); break;
+    case 'sync-create': createBoard(); break;
+    case 'sync-join': joinBoard(document.getElementById('joinCode').value); break;
+    case 'sync-leave': leaveBoard(); break;
+    case 'copy-code': copyText(sync.code, null); break;
+    case 'copy-link': copyText(shareLink(), document.getElementById('shareLink')); break;
     case 'up': case 'down': {
       const th = t.theatre || '';
       const cs = S.tasks.filter(x => theatreCase(x) && (x.theatre || '') === th).sort((p, q) => (p.start ?? 1e9) - (q.start ?? 1e9) || p.seq - q.seq);
@@ -742,6 +884,7 @@ document.addEventListener('change', e => {
   switch (a) {
     case 'docstatus': d.status = el.value; autoSchedule(); commit(); toast(`${d.name}: ${DOC_STATUS[d.status]} – schedule updated`); break;
     case 'showdone': ui.showDone = el.checked; render(); break;
+    case 'me': sync.me = el.value; writePref('me', el.value); break;
     case 'dname': d.name = el.value.trim() || d.name; S.example = false; commit(); break;
     case 'dext': d.ext = el.value.trim(); commit(); break;
     case 'dtier': d.tier = el.value; if (d.tier !== 'second') d.coordinator = false; if (d.tier === 'second') d.obs = false; autoSchedule(); commit(); break;
@@ -765,7 +908,15 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && $layer.inn
 setInterval(() => { if (ui.tab === 'timeline' && !draft) { const n = $main.querySelectorAll('.now'); const L = shiftLen(); const nr = nowRel(); n.forEach(x => x.style.left = (nr / 60 * 84) + 'px'); if (nr >= L) n.forEach(x => x.hidden = true); } }, 60000);
 
 if (S.example) save();
-render();
+// ?join=CODE link from the team chat
+(() => { try { const q = new URLSearchParams(location.search).get('join'); if (!q) return; history.replaceState(null, '', location.pathname + location.hash);
+  const c = normCode(q); if (!c || c === sync.code) return; if (!sync.code) { joinBoard(c); } else { sync.joinPrefill = c; ui.tab = 'team'; toast('You are on another team board. Leave it first to join this one.'); } } catch (e) {} })();
+render(); renderSyncChip();
+if (sync.code) { setStatus('connecting'); sync.dirty ? push() : pull(true); }
+setInterval(() => { if (sync.code && !document.hidden) { sync.dirty ? push() : pull(false); } }, 4000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && sync.code) pull(false); });
+document.addEventListener('focusout', () => setTimeout(() => { if (sync.needRender && !$main.contains(document.activeElement)) { sync.needRender = false; render(); } }, 0));
+setInterval(renderSyncChip, 30000);
 })();
 </script>
 <script>
