@@ -7,6 +7,8 @@ An installable web app for anaesthesia on-call teams. It assigns OT cases, APS r
 2. Leave the settings as they are (`vercel.json` already sets the build and output folder) and press **Deploy**.
 3. Every push to `master` redeploys automatically.
 
+On Vercel's free Hobby plan, Git deployments only run for commits authored by the account owner, so commits here are authored as the repo owner.
+
 ## Install on a phone
 Open the Vercel link, then:
 - **iPhone (Safari):** Share → *Add to Home Screen*.
