@@ -23,6 +23,7 @@
   --c-pre: #d8a800;      /* yellow – induction agents */
   --c-list: #858b92;     /* grey – local anaesthetics */
   --c-obs: #d9654a;      /* salmon – antiemetics */
+  --c-code: #0b93ad;     /* cyan – code blue team */
   --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --f-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -32,14 +33,14 @@
   :root:not([data-theme="light"]) {
     --bg: #0f1514; --surface: #172120; --surface-2: #1f2b29; --fg: #e4ece9; --muted: #93a49e; --line: #2c3a37;
     --accent: #4fc0a0; --accent-fg: #06201a; --warn: #f0a24a; --crit: #ff6b6b; --ok: #6cc070;
-    --c-ot: #b98ae0; --c-em: #ff5a5f; --c-aps: #6fb0ff; --c-pre: #f2cd3c; --c-list: #a6acb3; --c-obs: #ff9b80;
+    --c-ot: #b98ae0; --c-em: #ff5a5f; --c-aps: #6fb0ff; --c-pre: #f2cd3c; --c-list: #a6acb3; --c-obs: #ff9b80; --c-code: #45d0e8;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f1514; --surface: #172120; --surface-2: #1f2b29; --fg: #e4ece9; --muted: #93a49e; --line: #2c3a37;
   --accent: #4fc0a0; --accent-fg: #06201a; --warn: #f0a24a; --crit: #ff6b6b; --ok: #6cc070;
-  --c-ot: #b98ae0; --c-em: #ff5a5f; --c-aps: #6fb0ff; --c-pre: #f2cd3c; --c-list: #a6acb3; --c-obs: #ff9b80;
+  --c-ot: #b98ae0; --c-em: #ff5a5f; --c-aps: #6fb0ff; --c-pre: #f2cd3c; --c-list: #a6acb3; --c-obs: #ff9b80; --c-code: #45d0e8;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -79,7 +80,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 15px; text-tran
 .btn.sm { padding: 4px 9px; font-size: 13px; }
 .btn .dot, .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
 
-.t-ot { --c: var(--c-ot); } .t-em { --c: var(--c-em); } .t-aps { --c: var(--c-aps); } .t-pre { --c: var(--c-pre); } .t-list { --c: var(--c-list); } .t-obs { --c: var(--c-obs); }
+.t-ot { --c: var(--c-ot); } .t-em { --c: var(--c-em); } .t-aps { --c: var(--c-aps); } .t-pre { --c: var(--c-pre); } .t-list { --c: var(--c-list); } .t-obs { --c: var(--c-obs); } .t-code { --c: var(--c-code); }
 .dot { background: var(--c); }
 
 .banner { border: 1px dashed var(--line); border-radius: var(--r); padding: 10px 14px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
@@ -136,6 +137,10 @@ select.status { border: 1px solid var(--line); background: var(--surface-2); bor
 .shiftnav .lbl { font-family: var(--f-mono); font-size: 12px; color: var(--muted); padding: 0 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shiftnav button { flex: none; }
 .shiftnav .lbl b { color: var(--fg); font-family: var(--f-body); font-size: 13px; }
+.chip.duty { background: color-mix(in srgb, var(--c) 15%, transparent); color: var(--c); }
+.duty-pick { display: flex; flex-wrap: wrap; gap: 4px; }
+.duty-pick button { border: 1px solid var(--line); border-top: 3px solid var(--c); background: var(--surface-2); border-radius: 6px; padding: 4px 8px; font-size: 12.5px; font-weight: 700; }
+.duty-pick button[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 20%, var(--surface)); border-color: var(--c); }
 .chip.hol { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 .rota-t td, .rota-t th { white-space: nowrap; }
 .rota-t tr.cur td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
@@ -255,6 +260,7 @@ pre.handover { background: var(--bg); border: 1px solid var(--line); border-radi
 const TYPES = {
   ot:   { label: 'OT case',        short: 'OT',        cls: 't-ot',   dur: 90 },
   em:   { label: 'Emergency call', short: 'Emergency', cls: 't-em',   dur: 30 },
+  code: { label: 'Code blue',      short: 'Code blue', cls: 't-code', dur: 30 },
   aps:  { label: 'APS review',     short: 'APS',       cls: 't-aps',  dur: 20 },
   pre:  { label: 'Preop assessment', short: 'Preop',   cls: 't-pre',  dur: 25 },
   obs:  { label: 'Obs & Gyne',     short: 'Obs/Gyne',  cls: 't-obs',  dur: 45 },
@@ -263,11 +269,18 @@ const TYPES = {
 const PRI = {
   ot:   ['', 'Immediate', 'Urgent', 'Expedited', 'Elective'],   // NCEPOD
   em:   ['', 'Crash / now', 'Within 15 min', 'Within 1 h', 'When free'],
+  code: ['', 'Arrest – now', 'Peri-arrest', 'Post-arrest review', 'Debrief / paperwork'],
   aps:  ['', 'Urgent', 'Soon', 'Routine round', 'Routine'],
   pre:  ['', 'Urgent', 'Today', 'Before list', 'Elective'],
   obs:  ['', 'Cat 1 · now', 'Cat 2 · urgent', 'Cat 3 · soon', 'Cat 4 · elective'],
   list: ['', 'Urgent', 'Soon', 'Before handover', 'Routine'],
 };
+// first on-call duties, as on the department rota; each is held for the whole 24 h on-call
+const DUTY = { aps: 'APS, Trauma & Code blue', pre: 'Assessment', em: 'Emergency call', obs: 'OB/GYN' };
+const DUTY_TYPES = { aps: ['aps', 'code'], pre: ['pre'], em: ['em'], obs: ['obs'] };
+function dutyOfType(type) { return Object.keys(DUTY_TYPES).find(k => DUTY_TYPES[k].includes(type)) || ''; }
+function dutyPhone(k) { return ((R && R.settings && R.settings.dutyPhones) || {})[k] || ''; }
+const THIRD_ROLE = { cardiac: 'Cardiac anaesthesia', ot: 'Regular OT' };
 const DOC_STATUS = { available: 'Available', busy: 'Tied up', off: 'Off / away' };
 const STORE_KEY = 'oncall-board-v1';
 
@@ -285,14 +298,14 @@ function writePref(k, v) { try { localStorage.setItem('oncall-pref-' + k, v); } 
 
 function todayISO() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
-const DEF_SETTINGS = () => ({ weekdayStart: '18:00', weekdayEnd: '07:30', holidayStart: '08:00', weekend: [5, 6], holidays: [], theatres: ['Main OT 1', 'Main OT 2', 'Emergency OT', 'Obstetric OT'] });
+const DEF_SETTINGS = () => ({ morning: true, morningStart: '07:30', morningEnd: '14:00', weekdayStart: '18:00', weekdayEnd: '07:30', holidayStart: '08:00', weekend: [5, 6], holidays: [], dutyPhones: { aps: '', pre: '69050757', em: '51680910', obs: '69621821' }, theatres: ['Main OT 1', 'Main OT 2', 'Emergency OT', 'Obstetric OT'] });
 function blankRoot() { return { v: 2, example: false, settings: DEF_SETTINGS(), staff: [], teams: [], rota: {}, shifts: {} }; }
 function starterRoot() {
   const r = blankRoot();
   const sf = (name, tier, obs) => ({ id: uid(), name, tier, obs: !!obs, ext: '' });
   r.staff = [sf('3rd on-call', 'third'), sf('2nd on-call 1', 'second'), sf('2nd on-call 2', 'second'), sf('2nd on-call 3', 'second'),
-    sf('1st on-call 1', 'first'), sf('1st on-call 2', 'first'), sf('1st on-call 3', 'first'), sf('Obs & Gyne on-call', 'first', true)];
-  r.teams = [{ id: 'team-a', name: 'Team A', members: r.staff.map((x, i) => ({ staffId: x.id, coordinator: i === 1, listPrep: i === 4, obs: x.obs })) }];
+    sf('1st on-call · APS/Trauma/Code blue', 'first'), sf('1st on-call · Assessment', 'first'), sf('1st on-call · Emergency call', 'first'), sf('1st on-call · OB/GYN', 'first', true)];
+  r.teams = [{ id: 'team-a', name: 'Team A', members: r.staff.map((x, i) => ({ staffId: x.id, coordinator: i === 1, listPrep: i === 4, obs: x.obs, duty: ['', '', '', '', 'aps', 'pre', 'em', 'obs'][i] || '' })) }];
   return r;
 }
 function example() {
@@ -302,13 +315,31 @@ function example() {
     sf('Dr Salem', 'third', '4400'), sf('Dr Huda', 'second', '4410'), sf('Dr Omar', 'second', '4411'), sf('Dr Lina', 'second', '4412'),
     sf('Dr Yusuf', 'first', '4420'), sf('Dr Mariam', 'first', '4421'), sf('Dr Khalid', 'first', '4422'), sf('Dr Noor', 'first', '4430', true),
     sf('Dr Rania', 'third', '4401'), sf('Dr Tarek', 'second', '4413'), sf('Dr Aya', 'second', '4414'), sf('Dr Hany', 'second', '4415'),
-    sf('Dr Sara', 'first', '4423'), sf('Dr Adel', 'first', '4424'), sf('Dr Mona', 'first', '4425'), sf('Dr Ziad', 'first', '4431', true)];
-  const mem = (names, coord, lp) => names.map(n => { const x = R.staff.find(y => y.name === n); return { staffId: x.id, coordinator: n === coord, listPrep: n === lp, obs: x.obs }; });
+    sf('Dr Sara', 'first', '4423'), sf('Dr Adel', 'first', '4424'), sf('Dr Mona', 'first', '4425'), sf('Dr Ziad', 'first', '4431', true),
+    sf('Dr Leen', 'trainee', ''), sf('Dr Fares', 'trainee', '')];
+  const DU = { 'Dr Yusuf': 'aps', 'Dr Mariam': 'pre', 'Dr Khalid': 'em', 'Dr Noor': 'obs', 'Dr Sara': 'aps', 'Dr Adel': 'pre', 'Dr Mona': 'em', 'Dr Ziad': 'obs' };
+  const TR = { 'Dr Salem': 'cardiac', 'Dr Rania': 'ot' };
+  const mem = (names, coord, lp) => names.map(n => { const x = R.staff.find(y => y.name === n); return { staffId: x.id, coordinator: n === coord, listPrep: n === lp, obs: DU[n] === 'obs', duty: DU[n] || '', thirdRole: TR[n] || '' }; });
   R.teams = [
-    { id: 'team-a', name: 'Team A', members: mem(['Dr Salem', 'Dr Huda', 'Dr Omar', 'Dr Lina', 'Dr Yusuf', 'Dr Mariam', 'Dr Khalid', 'Dr Noor'], 'Dr Huda', 'Dr Yusuf') },
-    { id: 'team-b', name: 'Team B', members: mem(['Dr Rania', 'Dr Tarek', 'Dr Aya', 'Dr Hany', 'Dr Sara', 'Dr Adel', 'Dr Mona', 'Dr Ziad'], 'Dr Tarek', 'Dr Sara') }];
-  const first = currentShiftDate();
+    { id: 'team-a', name: 'Team A', members: mem(['Dr Salem', 'Dr Huda', 'Dr Omar', 'Dr Lina', 'Dr Yusuf', 'Dr Mariam', 'Dr Khalid', 'Dr Noor', 'Dr Leen'], 'Dr Huda', 'Dr Yusuf') },
+    { id: 'team-b', name: 'Team B', members: mem(['Dr Rania', 'Dr Tarek', 'Dr Aya', 'Dr Hany', 'Dr Sara', 'Dr Adel', 'Dr Mona', 'Dr Ziad', 'Dr Fares'], 'Dr Tarek', 'Dr Sara') }];
+  const first = keyDate(currentShiftDate());
   for (let i = -1; i < 14; i++) R.rota[addDays(first, i)] = Math.abs(i) % 2 === 0 ? 'team-a' : 'team-b';
+  if (sessionsOf(first).includes(first + '@am')) {
+    S = ensureShift(first + '@am');
+    const m = (type, title, location, priority, duration, earliest, extra = {}) => ({ id: uid(), type, title, location, notes: '', priority, duration, earliest, theatre: '', asa: '',
+      doctorId: null, start: null, fixDoctor: false, fixStart: false, status: 'pending', seq: 0, ...extra });
+    S.tasks = [
+      m('pre', "Preop clinic – today's elective list (5 pts)", 'Preop clinic', 3, 90, '07:30'),
+      m('pre', 'Preop – ICU patient for tracheostomy', 'ICU bed 6', 2, 30, '09:00', { asa: '4' }),
+      m('aps', 'APS round – epidurals & PCAs (8 pts)', 'All wards', 3, 75, '07:45'),
+      m('aps', 'Epidural – patchy block', 'Ward 6A, bed 4', 2, 20, '10:30'),
+      m('em', 'ED – rapid sequence induction', 'Emergency dept, resus 1', 1, 45, '11:00'),
+      m('em', 'Ward 3 – difficult cannulation', 'Ward 3, bed 2', 4, 20, '09:30'),
+      m('code', 'Code blue – Ward 5, bed 12', 'Ward 5, bed 12', 1, 30, '10:00'),
+    ];
+    S.tasks.forEach((x, i) => x.seq = i); autoSchedule();
+  }
   S = ensureShift(first);
   const day = !S.shift.mins || S.shift.mins < 1440;
   const tm = h => day ? h : h;   // example times are written for the evening shift; they also sit inside a holiday shift
@@ -343,7 +374,7 @@ function example() {
 function migrate(st) {
   if (!st) return null;
   if (st.v === 2) {
-    const r = Object.assign(blankRoot(), st); r.settings = Object.assign(DEF_SETTINGS(), st.settings || {}); return r;
+    const r = Object.assign(blankRoot(), st); r.settings = Object.assign(DEF_SETTINGS(), st.settings || {}); r.settings.dutyPhones = Object.assign(DEF_SETTINGS().dutyPhones, (st.settings || {}).dutyPhones || {}); return r;
   }
   if (st.example) return null;   // old example: rebuild the new one
   const r = blankRoot();
@@ -371,6 +402,19 @@ function isHoliday(date, sh) {
   const wd = new Date(date + 'T12:00:00').getDay();
   return R.settings.weekend.includes(wd) || R.settings.holidays.includes(date);
 }
+function keyDate(k) { return String(k).slice(0, 10); }
+function keySession(k) { return String(k).endsWith('@am') ? 'am' : 'main'; }
+function sessionsOf(date) { return !isHoliday(date, R.shifts[date]) && R.settings.morning ? [date + '@am', date] : [date]; }
+function stepKey(key, dir) {
+  const date = keyDate(key), list = sessionsOf(date); const i = list.indexOf(key); const j = (i < 0 ? (dir > 0 ? list.length - 1 : 0) : i) + dir;
+  if (j >= 0 && j < list.length) return list[j];
+  const nl = sessionsOf(addDays(date, dir)); return dir > 0 ? nl[0] : nl[nl.length - 1];
+}
+function windowForKey(key) {
+  if (keySession(key) === 'am') { let m = hm2abs(R.settings.morningEnd) - hm2abs(R.settings.morningStart); if (m <= 0) m += 1440; return { start: R.settings.morningStart, mins: m }; }
+  return windowFor(keyDate(key), isHoliday(keyDate(key), R.shifts[keyDate(key)]));
+}
+function sessionName(sh) { return sh.session === 'am' ? 'Morning duties' : isHoliday(sh.date, sh) ? 'Holiday' : 'Night'; }
 function windowFor(date, hol) {
   const st = R.settings;
   if (hol) return { start: st.holidayStart, mins: 1440 };
@@ -378,29 +422,51 @@ function windowFor(date, hol) {
   return { start: st.weekdayStart, mins: m };
 }
 function startDT(date, start) { return new Date(date + 'T' + start.padStart(5, '0') + ':00'); }
-function shiftEnds(date) { const sh = R.shifts[date]; const w = sh ? { start: sh.shift.start, mins: sh.shift.mins } : windowFor(date, isHoliday(date)); return startDT(date, w.start).getTime() + w.mins * 60000; }
-function currentShiftDate() { const now = new Date(); const y = addDays(isoDate(now), -1); return Date.now() < shiftEnds(y) ? y : isoDate(now); }
+function shiftEnds(key) { const sh = R.shifts[key]; const w = sh ? { start: sh.shift.start, mins: sh.shift.mins } : windowForKey(key); return startDT(keyDate(key), w.start).getTime() + w.mins * 60000; }
+// the session running now (or the next one to start): last night's shift until it ends, then this morning, then tonight
+function currentShiftDate() {
+  const today = isoDate(new Date()); const y = addDays(today, -1);
+  if (Date.now() < shiftEnds(y)) return y;
+  for (const k of sessionsOf(today)) if (Date.now() < shiftEnds(k)) return k;
+  return today;
+}
 function teamName(id) { const t = R.teams.find(x => x.id === id); return t ? t.name : ''; }
 function staffOf(id) { return R.staff.find(x => x.id === id); }
-function buildDoctors(teamId) {
+function buildDoctors(teamId, session) {
   const tm = R.teams.find(t => t.id === teamId); if (!tm) return [];
-  return tm.members.map(m => { const sf = staffOf(m.staffId); if (!sf) return null;
-    return { id: sf.id, name: sf.name, tier: sf.tier, obs: !!(m.obs ?? sf.obs), coordinator: !!m.coordinator && sf.tier === 'second', listPrep: !!m.listPrep, ext: sf.ext || '', status: 'available' }; }).filter(Boolean);
+  let ds = tm.members.map(m => { const sf = staffOf(m.staffId); if (!sf) return null;
+    const duty = sf.tier === 'first' ? (m.duty || ((m.obs ?? sf.obs) ? 'obs' : '')) : '';
+    return { id: sf.id, name: sf.name, tier: sf.tier, duty, obs: duty === 'obs', thirdRole: sf.tier === 'third' ? (m.thirdRole || '') : '', coordinator: !!m.coordinator && sf.tier === 'second', listPrep: !!m.listPrep, ext: sf.ext || '', status: 'available' }; }).filter(Boolean);
+  if (session === 'am') { ds = ds.filter(d => d.tier === 'first' || d.tier === 'trainee').map(d => Object.assign(d, { coordinator: false, listPrep: false })); autoDuties(ds); }
+  return ds;
 }
-function ensureShift(date) {
-  let sh = R.shifts[date];
+// spread the four morning duties over the first on-calls who are available
+// give a duty to any first on-call who has none, using the duties nobody holds yet
+function autoDuties(ds) {
+  const fs = ds.filter(d => d.tier === 'first' && d.status !== 'off');
+  const taken = new Set(fs.map(d => d.duty).filter(Boolean));
+  const free = Object.keys(DUTY).filter(k => !taken.has(k));
+  fs.filter(d => !d.duty).forEach(d => { d.duty = free.shift() || 'em'; d.obs = d.duty === 'obs'; });
+}
+function dutyCls(k) { return TYPES[DUTY_TYPES[k][0]].cls; }
+function dutyChips(d) { return d.duty ? `<span class="chip duty ${dutyCls(d.duty)}">${esc(DUTY[d.duty])}${dutyPhone(d.duty) ? ' · <span class="num">' + esc(dutyPhone(d.duty)) + '</span>' : ''}</span>` : (d.tier === 'first' ? '<span class="chip">No duty</span>' : ''); }
+function dutyPicker(d) { return `<label class="post-l">Duty<select class="who" data-act="duty" data-id="${d.id}" aria-label="Duty of ${esc(d.name)}"><option value="">No duty</option>${Object.entries(DUTY).map(([k, v]) => `<option value="${k}" ${d.duty === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`; }
+function junior() { const r = role(); return r === 'first' || r === 'trainee'; }
+function ensureShift(key) {
+  let sh = R.shifts[key];
+  const date = keyDate(key), session = keySession(key);
   if (!sh) {
-    const w = windowFor(date, isHoliday(date)); const teamId = R.rota[date] || '';
-    sh = R.shifts[date] = { date, teamId, holiday: null, shift: { date, start: w.start, mins: w.mins, theatres: R.settings.theatres.slice() }, doctors: buildDoctors(teamId), tasks: [], log: [] };
+    const w = windowForKey(key); const teamId = R.rota[date] || '';
+    sh = R.shifts[key] = { key, date, session, teamId, holiday: null, shift: { date, start: w.start, mins: w.mins, theatres: R.settings.theatres.slice() }, doctors: buildDoctors(teamId, session), tasks: [], log: [] };
   }
-  if (!sh.log) sh.log = [];
+  sh.key = key; sh.session = session; if (!sh.log) sh.log = [];
   return sh;
 }
 function pointShift() { if (!ui.shiftDate) ui.shiftDate = currentShiftDate(); S = ensureShift(ui.shiftDate); }
 function logChange(text) { S.log = S.log || []; S.log.push({ id: uid(), at: new Date().toISOString(), by: myName() || 'Someone', text }); }
 // Change a shift's hours (holiday toggle or new settings) while keeping placed tasks at the same clock time.
 function rewindow(sh) {
-  const w = windowFor(sh.date, isHoliday(sh.date, sh));
+  const w = windowForKey(sh.key || sh.date);
   if (sh.shift.start === w.start && sh.shift.mins === w.mins) return;
   const diff = hm2abs(w.start) - hm2abs(sh.shift.start);
   sh.tasks.forEach(t => { if (t.start != null) { t.start = ((t.start - diff) % 1440 + 1440) % 1440; } });
@@ -409,7 +475,7 @@ function rewindow(sh) {
 function applyTeamToShift(sh, teamId) {
   const keep = new Map(sh.doctors.map(d => [d.id, d]));
   sh.teamId = teamId;
-  sh.doctors = buildDoctors(teamId).map(d => keep.has(d.id) ? Object.assign(d, { status: keep.get(d.id).status, post: keep.get(d.id).post }) : d);
+  sh.doctors = buildDoctors(teamId, sh.session).map(d => keep.has(d.id) ? Object.assign(d, { status: keep.get(d.id).status, post: keep.get(d.id).post, duty: keep.get(d.id).duty || d.duty, obs: (keep.get(d.id).duty || d.duty) === 'obs' }) : d);
   const ids = new Set(sh.doctors.map(d => d.id));
   sh.tasks.forEach(t => { if (t.doctorId && !ids.has(t.doctorId)) { t.doctorId = null; t.fixDoctor = false; t.fixStart = false; if (t.status === 'pending') t.start = null; } });
   const prevS = S; S = sh; autoSchedule(); S = prevS;
@@ -436,14 +502,20 @@ function findSlot(lists, earliest, dur) {
 }
 function inOT(d) { return d.tier === 'first' && !!d.post && d.post.where === 'ot'; }
 function eligible(t) {
-  const avail = S.doctors.filter(d => d.status !== 'off' && d.tier !== 'third');
+  const avail = S.doctors.filter(d => d.status !== 'off' && d.tier !== 'third' && d.tier !== 'trainee');
+  const dk = dutyOfType(t.type);
+  if (S.session === 'am' && dk && dk !== 'obs') {   // morning: the first on-call holding that duty
+    const fs = avail.filter(d => d.tier === 'first' && !d.obs);
+    const c = fs.filter(d => d.duty === dk);
+    return c.length ? c : fs.length ? fs : avail;
+  }
   const by = tier => avail.filter(d => d.tier === tier);
   const gen = avail.filter(d => !d.obs);                   // obs & gyne on-call stays on labour ward
   const genBy = tier => gen.filter(d => d.tier === tier);
   let c;
   if (t.type === 'obs') c = avail.filter(d => d.obs || d.tier === 'second');
   else if (t.type === 'ot') c = genBy('second').concat(gen.filter(inOT));   // first on-calls posted inside OT can take cases
-  else if (t.type === 'em') c = gen;
+  else if (t.type === 'em' || t.type === 'code') c = gen;
   else if (t.type === 'list') c = avail.filter(d => d.listPrep);
   else c = genBy('first');
   if (!c.length) c = t.type === 'list' ? genBy('first') : gen;
@@ -456,7 +528,8 @@ function penalty(d, t) {
   if (inOT(d)) { if (t.type === 'ot') { p += (t.theatre && d.post.theatre && d.post.theatre !== t.theatre) ? 60 : -5; } else if (t.type !== 'list') p += 120; } // posted in OT: keep them there
   if (t.type === 'obs' && !d.obs) p += t.priority === 1 ? 15 : 90;   // second on-call covers obs only when needed
   if ((t.type === 'ot' || t.type === 'obs') && d.coordinator) p += 45;           // keep coordinator free to coordinate when possible
-  if (t.type === 'em' && d.tier === 'second') p += t.priority === 1 ? 10 : 40; // first on-call attends calls first
+  if ((t.type === 'em' || t.type === 'code') && d.tier === 'second') p += t.priority === 1 ? 10 : 40; // first on-call attends calls first
+  { const dk = dutyOfType(t.type); if (dk && d.tier === 'first' && d.duty) p += d.duty === dk ? -5 : (S.session === 'am' ? 120 : 45); }   // the duty holder takes their own work first
   if (t.type !== 'list' && d.listPrep && t.priority >= 3) p += 10;
   return p;
 }
@@ -509,18 +582,22 @@ function stats() {
   };
 }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-function tierLabel(d) { return d.tier === 'third' ? '3rd on-call' : d.tier === 'second' ? '2nd on-call' : d.obs ? '1st on-call · Obs & Gyne' : '1st on-call'; }
-function tierShort(d) { return d.tier === 'third' ? '3rd' : d.tier === 'second' ? '2nd' : '1st'; }
+function tierLabel(d) { return d.tier === 'trainee' ? 'Trainee on-call' : d.tier === 'third' ? '3rd on-call' + (d.thirdRole ? ' · ' + THIRD_ROLE[d.thirdRole] : '') : d.tier === 'second' ? '2nd on-call' : d.duty ? '1st on-call · ' + DUTY[d.duty] : '1st on-call'; }
+function tierShort(d) { return d.tier === 'trainee' ? 'Trainee' : d.tier === 'third' ? '3rd' : d.tier === 'second' ? '2nd' : '1st'; }
 /* roles: who is using this phone */
 function meDoc() { return ui.meId && ui.meId !== 'observer' ? doc(ui.meId) : null; }
 function meStaff() { return ui.meId && ui.meId !== 'observer' ? staffOf(ui.meId) : null; }
 // role on the shift being viewed; 'offduty' = in the department but not on this shift
-function role() { const d = meDoc(); if (d) return d.tier; const sf = meStaff(); if (sf) return sf.tier === 'third' ? 'third' : 'offduty'; return ui.meId === 'observer' ? 'third' : 'none'; }
+function role() { const d = meDoc(); if (d) return d.tier; const sf = meStaff();
+  if (sf && S && S.session === 'am') {   // the day's second and third on-calls run the morning too
+    const night = R.shifts[S.date]; const onDay = night ? night.doctors.some(x => x.id === sf.id) : (R.teams.find(t => t.id === R.rota[S.date]) || { members: [] }).members.some(m => m.staffId === sf.id);
+    if (onDay && (sf.tier === 'second' || sf.tier === 'third')) return sf.tier;
+  } if (sf) return sf.tier === 'third' ? 'third' : 'offduty'; return ui.meId === 'observer' ? 'third' : 'none'; }
 function canEdit() { const r = role(); return r !== 'third' && r !== 'offduty'; }
 function canManage() { const r = role(); const sf = meStaff(); return r === 'none' || r === 'second' || (!!sf && sf.tier === 'second'); }
 function canAssign() { const r = role(); return r === 'second' || r === 'none'; }
-function canEditTask(t) { return canEdit() && (role() !== 'first' || !t.doctorId || t.doctorId === ui.meId || t.postedBy === myName()); }
-function canStatus(t) { return canEdit() && (role() !== 'first' || t.doctorId === ui.meId); }
+function canEditTask(t) { return canEdit() && (!junior() || !t.doctorId || t.doctorId === ui.meId || t.postedBy === myName()); }
+function canStatus(t) { return canEdit() && (!junior() || t.doctorId === ui.meId); }
 function myName() { const d = meDoc() || meStaff(); return d ? d.name : (ui.meId === 'observer' ? 'Observer' : ''); }
 function postLabel(d) { return inOT(d) ? 'In OT' + (d.post.theatre ? ' · ' + d.post.theatre : '') : 'Outside OT'; }
 function postChip(d) { return d.tier === 'first' ? `<span class="chip ${inOT(d) ? 'post-ot' : 'post-out'}">${esc(postLabel(d))}</span>` : ''; }
@@ -539,8 +616,8 @@ const $main = document.getElementById('main');
 const $layer = document.getElementById('layer');
 
 function render() {
-  const sh = S.shift; const hol = isHoliday(S.date, S); const cur = S.date === currentShiftDate();
-  document.getElementById('shiftLabel').innerHTML = `<b>${esc(dayLabel(S.date))}</b> ${esc(sh.start)}–${fmt(shiftLen())} · ${hol ? 'Holiday' : 'Weekday'}${S.teamId ? ' · ' + esc(teamName(S.teamId)) : ''}${cur ? ' · now' : ''}`;
+  const sh = S.shift; const cur = S.key === currentShiftDate();
+  document.getElementById('shiftLabel').innerHTML = `<b>${esc(dayLabel(S.date))}</b> ${esc(sh.start)}–${fmt(shiftLen())} · ${esc(sessionName(S))}${S.teamId ? ' · ' + esc(teamName(S.teamId)) : ''}${cur ? ' · now' : ''}`;
   document.getElementById('navNow').hidden = cur;
   const s = stats();
   document.getElementById('stats').innerHTML =
@@ -571,15 +648,16 @@ function roBanner() {
   return `<div class="banner"><span>${msg}</span><button class="btn sm" data-act="handover">Handover text</button></div>`;
 }
 function carryBanner() {
-  const prev = R.shifts[addDays(S.date, -1)]; if (!prev || !canEdit()) return '';
+  const prev = R.shifts[stepKey(S.key, -1)]; if (!prev || !canEdit()) return '';
   const left = prev.tasks.filter(t => t.status !== 'done' && !t.carriedTo);
   if (!left.length) return '';
-  return `<div class="banner" style="border-color:var(--warn)"><span><b>${left.length} unfinished</b> from the previous shift (${esc(dayLabel(prev.date))}${prev.teamId ? ', ' + esc(teamName(prev.teamId)) : ''}).</span><button class="btn sm primary" data-act="carry">Carry over to this shift</button></div>`;
+  return `<div class="banner" style="border-color:var(--warn)"><span><b>${left.length} unfinished</b> from the previous shift (${esc(dayLabel(prev.date))} ${esc(sessionName(prev).toLowerCase())}${prev.teamId ? ', ' + esc(teamName(prev.teamId)) : ''}).</span><button class="btn sm primary" data-act="carry">Carry over to this shift</button></div>`;
 }
 function shiftTeamPanel() {
   const n = S.doctors.length; const changes = (S.log || []).length;
   return `<section class="panel"><div class="row"><h2>${S.teamId ? esc(teamName(S.teamId)) : 'No team set for this date'} · ${n} doctor${n === 1 ? '' : 's'}</h2><span class="spacer"></span>
-    ${canAssign() ? `<button class="btn sm" data-act="addto">+ Add doctor</button>` : ''}${canManage() && !S.teamId ? `<button class="btn sm" data-act="goteam">Set team in rota</button>` : ''}</div>
+    ${S.session === 'am' && canAssign() ? `<button class="btn sm" data-act="autoduty">Fill empty duties</button>` : ''}${canAssign() ? `<button class="btn sm" data-act="addto">+ Add doctor</button>` : ''}${canManage() && !S.teamId ? `<button class="btn sm" data-act="goteam">Set team in rota</button>` : ''}</div>
+    ${S.session === 'am' ? `<p class="empty" style="margin:0">Morning ${esc(S.shift.start)}–${fmt(shiftLen())}: first on-calls cover outside duties. ${S.doctors.filter(d => d.tier === 'first').map(d => `<b>${esc(d.name)}</b> ${esc(d.duty ? DUTY[d.duty] : 'no duty yet')}`).join(' · ')}</p>` : ''}
     ${changes ? `<details><summary class="empty" style="cursor:pointer">Changes on this shift · ${changes}</summary><ul class="log">${S.log.slice().reverse().map(l => `<li>${esc(new Date(l.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))} · ${esc(l.text)} <i>(${esc(l.by)})</i></li>`).join('')}</ul></details>` : `<p class="empty" style="margin:0">${canAssign() ? 'Tap Swap on a doctor to replace them for this shift. Every change is logged here.' : 'No changes to the team on this shift.'}</p>`}</section>`;
 }
 function helpQueue(exceptMe) {
@@ -627,15 +705,16 @@ function viewBoard() {
   const coord = S.doctors.find(d => d.coordinator); const lp = S.doctors.filter(d => d.listPrep);
   const thirds = S.doctors.filter(d => d.tier === 'third');
   let h = exampleBanner() + addButtons() + carryBanner() + helpQueue(false) + shiftTeamPanel();
-  h += `<div class="banner">${thirds.length ? `<span><b>3rd on-call:</b> ${thirds.map(d => esc(d.name) + (d.ext ? ` · ext <span class="num">${esc(d.ext)}</span>` : '')).join(', ')}</span>` : ''}<span><b>Coordinator:</b> ${coord ? esc(coord.name) + (coord.ext ? ` · ext <span class="num">${esc(coord.ext)}</span>` : '') : '<span class="late">not set</span>'}</span>
+  if (S.session !== 'am') h += `<div class="banner">${thirds.length ? `<span><b>3rd on-call:</b> ${thirds.map(d => esc(d.name) + (d.thirdRole ? ' (' + esc(THIRD_ROLE[d.thirdRole]) + ')' : '') + (d.ext ? ` · ext <span class="num">${esc(d.ext)}</span>` : '')).join(', ')}</span>` : ''}<span><b>Coordinator:</b> ${coord ? esc(coord.name) + (coord.ext ? ` · ext <span class="num">${esc(coord.ext)}</span>` : '') : '<span class="late">not set</span>'}</span>
     <span><b>List prep:</b> ${lp.length ? lp.map(d => esc(d.name) + ` (${d.tier === 'second' ? '2nd' : '1st'})`).join(', ') : '<span class="late">not set</span>'}</span></div>`;
   if (unassigned.length) {
     h += `<section class="queue has"><div class="row"><h2>Waiting for a doctor · ${unassigned.length}</h2><span class="spacer"></span>${canEdit() ? '<button class="btn sm primary" data-act="schedule">Auto-assign</button>' : ''}</div>
       <div class="tasks">${unassigned.sort((a, b) => a.priority - b.priority).map(t => taskItem(t)).join('')}</div></section>`;
   }
-  const groups = [['second', 'Second on-call · OT', d => d.tier === 'second'], ['first', 'First on-call · APS, emergencies, preop', d => d.tier === 'first' && !d.obs], ['obs', 'First on-call · Obs & Gyne', d => d.obs]];
+  const groups = [['second', 'Second on-call · OT', d => d.tier === 'second'], ['first', S.session === 'am' ? 'First on-call · morning outside duties' : 'First on-call · APS, emergencies, preop', d => d.tier === 'first' && !d.obs], ['obs', 'First on-call · OB/GYN', d => d.obs], ['trainee', 'Trainee on-call', d => d.tier === 'trainee']];
   for (const [tier, title, fl] of groups) {
     const ds = S.doctors.filter(fl);
+    if (!ds.length && (tier === 'trainee' || (S.session === 'am' && tier !== 'first'))) continue;
     h += `<section style="display:grid;gap:10px"><h2>${title}</h2>`;
     if (!ds.length) { h += `<p class="empty">No ${{ second: 'second on-call', first: 'first on-call', obs: 'Obs &amp; Gyne on-call' }[tier]} doctor added yet. Add one under Team &amp; shift.</p>`; }
     h += `<div class="docs">` + ds.map(docCard).join('') + `</div></section>`;
@@ -653,9 +732,10 @@ function docCard(d) {
   const shown = open.slice(0, 4);
   return `<article class="doc ${d.status === 'off' ? 'off' : ''}">
     <div class="doc-h"><div style="min-width:0"><div class="doc-name">${esc(d.name)}</div>
-      <div class="chips"><span class="chip ${d.tier === 'second' ? 'tier2' : 'tier1'}">${d.tier === 'second' ? '2nd on-call' : '1st on-call'}</span>${postChip(d)}${d.obs ? '<span class="chip obs">Obs &amp; Gyne</span>' : ''}${d.coordinator ? '<span class="chip coord">Coordinator</span>' : ''}${d.listPrep ? '<span class="chip lp">List prep</span>' : ''}${d.ext ? `<span class="chip num">ext ${esc(d.ext)}</span>` : ''}</div></div>
+      <div class="chips"><span class="chip ${d.tier === 'second' ? 'tier2' : 'tier1'}">${d.tier === 'second' ? '2nd on-call' : d.tier === 'trainee' ? 'Trainee' : '1st on-call'}</span>${dutyChips(d)}${S.session === 'am' || d.tier !== 'first' ? '' : postChip(d)}${d.coordinator ? '<span class="chip coord">Coordinator</span>' : ''}${d.listPrep ? '<span class="chip lp">List prep</span>' : ''}${d.ext ? `<span class="chip num">ext ${esc(d.ext)}</span>` : ''}</div></div>
       <select class="status" data-act="docstatus" data-id="${d.id}" aria-label="Status of ${esc(d.name)}" ${canAssign() || d.id === ui.meId ? '' : 'disabled'}>${Object.entries(DOC_STATUS).map(([k, v]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-    <div class="row" style="justify-content:space-between">${d.tier === 'first' && canAssign() ? postSelect(d) : '<span></span>'}${canAssign() ? `<button class="btn sm" data-act="swap" data-id="${d.id}">Swap</button>` : ''}</div>
+    ${d.tier === 'first' && canAssign() ? dutyPicker(d) : ''}
+    <div class="row" style="justify-content:space-between">${d.tier === 'first' && canAssign() && S.session !== 'am' ? postSelect(d) : '<span></span>'}${canAssign() ? `<button class="btn sm" data-act="swap" data-id="${d.id}">Swap</button>` : ''}</div>
     <div><div class="load">${bar}</div><div class="load-l"><span>${open.length} open task${open.length === 1 ? '' : 's'}</span><span class="num">${Math.floor(total / 60)} h ${total % 60} min booked</span></div></div>
     <div class="tasks">${shown.length ? shown.map(t => taskItem(t, { hideDoc: true })).join('') : '<p class="empty">Nothing assigned. Free for the next call.</p>'}
     ${open.length > shown.length ? `<p class="empty">+ ${open.length - shown.length} more in Schedule</p>` : ''}</div></article>`;
@@ -725,21 +805,21 @@ function viewOT() {
 
 function viewTeam() {
   const st = R.settings; const dis = canManage() ? '' : 'disabled';
-  const today = currentShiftDate();
+  const today = keyDate(currentShiftDate());
   let h = exampleBanner() + viewShare();
   if (!canManage()) h += `<div class="banner"><span>Only second on-calls can change the rota, teams and staff list. You can see them here.</span></div>`;
   // rota
   const days = Array.from({ length: 21 }, (_, i) => addDays(today, i - 1));
   const teamOpts = sel => `<option value="">— no team —</option>` + R.teams.map(t => `<option value="${t.id}" ${sel === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
-  h += `<section class="panel"><div class="row"><h2>Rota</h2><span class="spacer"></span><span class="empty">Weekday ${esc(st.weekdayStart)}–${esc(st.weekdayEnd)} · Holiday ${esc(st.holidayStart)}–${esc(st.holidayStart)}</span></div>
+  h += `<section class="panel"><div class="row"><h2>Rota</h2><span class="spacer"></span><span class="empty">${st.morning ? 'Morning ' + esc(st.morningStart) + '–' + esc(st.morningEnd) + ' · ' : ''}Night ${esc(st.weekdayStart)}–${esc(st.weekdayEnd)} · Holiday ${esc(st.holidayStart)}–${esc(st.holidayStart)}</span></div>
     <div class="scroll-x"><table class="team-t rota-t"><thead><tr><th>Shift</th><th>Type</th><th>Team</th><th>Changes</th><th></th></tr></thead><tbody>${days.map(dt => {
       const sh = R.shifts[dt]; const hol = isHoliday(dt, sh); const tid = sh ? sh.teamId : (R.rota[dt] || '');
       const ch = sh ? (sh.log || []).length : 0;
       return `<tr class="${dt === today ? 'cur' : ''}"><td><b>${esc(dayLabel(dt))}</b>${dt === today ? ' · now' : ''}</td>
-        <td>${hol ? '<span class="chip hol">Holiday 24 h</span>' : '<span class="chip">Weekday</span>'}</td>
+        <td>${hol ? '<span class="chip hol">Holiday 24 h</span>' : `<span class="chip">${st.morning ? 'Morning + night' : 'Night'}</span>`}</td>
         <td><select data-act="rota-team" data-date="${dt}" ${dis} aria-label="Team for ${esc(dt)}">${teamOpts(tid)}</select></td>
         <td class="empty">${ch ? ch + ' change' + (ch === 1 ? '' : 's') : '—'}</td>
-        <td><button class="btn sm" data-act="openshift" data-date="${dt}">Open</button></td></tr>`; }).join('')}</tbody></table></div>
+        <td class="row" style="flex-wrap:nowrap">${!hol && st.morning ? `<button class="btn sm" data-act="openshift" data-date="${dt}@am">Morning</button>` : ''}<button class="btn sm" data-act="openshift" data-date="${dt}">${hol ? 'Open' : 'Night'}</button></td></tr>`; }).join('')}</tbody></table></div>
     ${canManage() && R.teams.length ? `<div class="row" style="align-items:flex-end"><label class="f">Rotate teams from<input type="date" id="fillFrom" value="${today}"></label>
       <label class="f">Starting with<select id="fillFirst">${R.teams.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></label>
       <label class="f">For<select id="fillDays">${[7, 14, 28, 56].map(n => `<option value="${n}" ${n === 28 ? 'selected' : ''}>${n} days</option>`).join('')}</select></label>
@@ -752,40 +832,47 @@ function viewTeam() {
       const used = new Set(tm.members.map(m => m.staffId));
       const rows = tm.members.map(m => { const sf = staffOf(m.staffId); if (!sf) return '';
         return `<tr><td>${esc(sf.name)}</td><td>${esc(tierShort(sf))}</td>
+          <td>${sf.tier === 'first' ? `<select data-act="tm-duty" data-team="${tm.id}" data-id="${sf.id}" ${dis} aria-label="Duty"><option value="">No duty</option>${Object.entries(DUTY).map(([k, v]) => `<option value="${k}" ${(m.duty || (m.obs ? 'obs' : '')) === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`
+            : sf.tier === 'third' ? `<select data-act="tm-third" data-team="${tm.id}" data-id="${sf.id}" ${dis} aria-label="Third on-call role"><option value="">—</option>${Object.entries(THIRD_ROLE).map(([k, v]) => `<option value="${k}" ${m.thirdRole === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>` : '<span class="empty">—</span>'}</td>
           <td style="text-align:center"><input type="radio" name="coord-${tm.id}" data-act="tm-coord" data-team="${tm.id}" data-id="${sf.id}" ${m.coordinator ? 'checked' : ''} ${sf.tier !== 'second' ? 'disabled' : dis} aria-label="Coordinator"></td>
           <td style="text-align:center"><input type="checkbox" data-act="tm-lp" data-team="${tm.id}" data-id="${sf.id}" ${m.listPrep ? 'checked' : ''} ${sf.tier === 'third' ? 'disabled' : dis} aria-label="List prep"></td>
-          <td style="text-align:center"><input type="checkbox" data-act="tm-obs" data-team="${tm.id}" data-id="${sf.id}" ${m.obs ? 'checked' : ''} ${sf.tier !== 'first' ? 'disabled' : dis} aria-label="Obs and Gyne"></td>
           <td>${canManage() ? `<button class="btn sm ghost danger" data-act="tm-del" data-team="${tm.id}" data-id="${sf.id}">Remove</button>` : ''}</td></tr>`; }).join('');
       const addOpts = R.staff.filter(x => !used.has(x.id)).map(x => `<option value="${x.id}">${esc(x.name)} · ${tierShort(x)}</option>`).join('');
-      const c = { third: 0, second: 0, first: 0 }; tm.members.forEach(m => { const sf = staffOf(m.staffId); if (sf) c[sf.tier]++; });
+      const c = { third: 0, second: 0, first: 0, trainee: 0 }; tm.members.forEach(m => { const sf = staffOf(m.staffId); if (sf) c[sf.tier]++; });
       return `<div class="team-card"><div class="row"><input type="text" id="tn-${tm.id}" class="f" value="${esc(tm.name)}" data-act="tm-name" data-team="${tm.id}" ${dis} style="font-weight:700;border:1px solid var(--line);border-radius:6px;padding:5px 8px;background:var(--surface);color:var(--fg);max-width:220px" aria-label="Team name">
-          <span class="empty">${c.third} third · ${c.second} second · ${c.first} first</span><span class="spacer"></span>${canManage() ? `<button class="btn sm ghost danger" data-act="team-del" data-team="${tm.id}">Delete team</button>` : ''}</div>
-        <div class="scroll-x"><table class="team-t"><thead><tr><th>Doctor</th><th>Grade</th><th>Coordinator</th><th>List prep</th><th>Obs/Gyne</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+          <span class="empty">${c.third} third · ${c.second} second · ${c.first} first${c.trainee ? ' · ' + c.trainee + ' trainee' : ''}</span><span class="spacer"></span>${canManage() ? `<button class="btn sm ghost danger" data-act="team-del" data-team="${tm.id}">Delete team</button>` : ''}</div>
+        <div class="scroll-x"><table class="team-t"><thead><tr><th>Doctor</th><th>Grade</th><th>Duty / role</th><th>Coordinator</th><th>List prep</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
         ${canManage() && addOpts ? `<label class="post-l">Add to team<select class="who" data-act="tm-add" data-team="${tm.id}"><option value="">Choose doctor…</option>${addOpts}</select></label>` : ''}</div>`; }).join('') : '<p class="empty">No teams yet. Add your staff below, then create a team.</p>'}</section>`;
   // staff
   const sRow = x => `<tr><td><input type="text" id="sn-${x.id}" value="${esc(x.name)}" data-act="sf-name" data-id="${x.id}" aria-label="Name" ${dis}></td>
-    <td><select data-act="sf-tier" data-id="${x.id}" aria-label="Grade" ${dis}>${[['third', '3rd on-call'], ['second', '2nd on-call'], ['first', '1st on-call']].map(([k, l]) => `<option value="${k}" ${x.tier === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+    <td><select data-act="sf-tier" data-id="${x.id}" aria-label="Grade" ${dis}>${[['third', '3rd on-call'], ['second', '2nd on-call'], ['first', '1st on-call'], ['trainee', 'Trainee']].map(([k, l]) => `<option value="${k}" ${x.tier === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
     <td style="text-align:center"><input type="checkbox" data-act="sf-obs" data-id="${x.id}" ${x.obs ? 'checked' : ''} ${x.tier !== 'first' ? 'disabled' : dis} aria-label="Usually Obs and Gyne"></td>
     <td><input type="text" id="se-${x.id}" value="${esc(x.ext)}" data-act="sf-ext" data-id="${x.id}" style="min-width:70px;width:80px" aria-label="Extension or bleep" ${dis}></td>
     <td>${canManage() ? `<button class="btn sm danger ghost" data-act="sf-del" data-id="${x.id}">Remove</button>` : ''}</td></tr>`;
   h += `<section class="panel"><div class="row"><h2>All staff · ${R.staff.length}</h2></div>
     <div class="scroll-x"><table class="team-t"><thead><tr><th>Name</th><th>Grade</th><th>Obs/Gyne</th><th>Ext / bleep</th><th></th></tr></thead><tbody>${R.staff.map(sRow).join('')}</tbody></table></div>
-    ${canManage() ? `<div class="row"><button class="btn sm" data-act="sf-add" data-tier="third">+ Third on-call</button><button class="btn sm" data-act="sf-add" data-tier="second">+ Second on-call</button><button class="btn sm" data-act="sf-add" data-tier="first">+ First on-call</button><button class="btn sm" data-act="sf-add" data-tier="obs">+ Obs &amp; Gyne</button></div>` : ''}</section>`;
+    ${canManage() ? `<div class="row"><button class="btn sm" data-act="sf-add" data-tier="third">+ Third on-call</button><button class="btn sm" data-act="sf-add" data-tier="second">+ Second on-call</button><button class="btn sm" data-act="sf-add" data-tier="first">+ First on-call</button><button class="btn sm" data-act="sf-add" data-tier="obs">+ OB/GYN</button><button class="btn sm" data-act="sf-add" data-tier="trainee">+ Trainee</button></div>` : ''}</section>`;
   // shift times and holidays
   const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   h += `<section class="panel"><h2>Shift times &amp; holidays</h2><div class="grid2">
+    <label class="f">Morning duties start<input type="time" id="set-ms" data-act="set-ms" value="${esc(st.morningStart)}" ${dis}></label>
+    <label class="f">Morning duties end<input type="time" id="set-me" data-act="set-me" value="${esc(st.morningEnd)}" ${dis}></label>
     <label class="f">Weekday shift starts<input type="time" id="set-ws" data-act="set-ws" value="${esc(st.weekdayStart)}" ${dis}></label>
     <label class="f">Weekday shift ends<input type="time" id="set-we" data-act="set-we" value="${esc(st.weekdayEnd)}" ${dis}></label>
     <label class="f">Holiday shift starts (24 h)<input type="time" id="set-hs" data-act="set-hs" value="${esc(st.holidayStart)}" ${dis}></label>
     <label class="f">Theatres (comma separated)<input type="text" id="set-th" data-act="set-th" value="${esc(st.theatres.join(', '))}" ${dis}></label></div>
+    <div class="grid2">${Object.entries(DUTY).map(([k, v]) => `<label class="f">${esc(v)} phone<input type="text" id="ph-${k}" data-act="set-ph" data-k="${k}" value="${esc(dutyPhone(k))}" inputmode="tel" ${dis}></label>`).join('')}</div>
+    <label class="row" style="gap:6px;font-size:13px"><input type="checkbox" data-act="set-morning" ${st.morning ? 'checked' : ''} ${dis}> Weekday mornings: first on-calls work their outside duties (APS, Trauma &amp; Code blue · Assessment · Emergency call · OB/GYN)</label>
     <div class="row"><span class="empty">Weekend (holiday shift):</span>${wd.map((n, i) => `<label class="row" style="gap:4px;font-size:13px"><input type="checkbox" data-act="set-wk" data-day="${i}" ${st.weekend.includes(i) ? 'checked' : ''} ${dis}>${n}</label>`).join('')}</div>
     <div class="row" style="align-items:flex-end"><label class="f">Public holiday date<input type="date" id="holDate" ${dis}></label>${canManage() ? '<button class="btn sm" data-act="hol-add">Add holiday</button>' : ''}</div>
     ${st.holidays.length ? `<div class="chips">${st.holidays.slice().sort().map(d => `<span class="chip hol">${esc(dayLabel(d))}${canManage() ? ` <button class="icon-btn" data-act="hol-del" data-date="${d}" aria-label="Remove ${esc(d)}">×</button>` : ''}</span>`).join('')}</div>` : ''}
-    <label class="row" style="gap:6px;font-size:13px"><input type="checkbox" data-act="sh-hol" ${isHoliday(S.date, S) ? 'checked' : ''} ${canEdit() ? '' : 'disabled'}> Run the shift on ${esc(dayLabel(S.date))} as a holiday shift (${esc(st.holidayStart)}–${esc(st.holidayStart)})</label></section>`;
+    <label class="row" style="gap:6px;font-size:13px" ${S.session === 'am' ? 'hidden' : ''}><input type="checkbox" data-act="sh-hol" ${isHoliday(S.date, S) ? 'checked' : ''} ${canEdit() ? '' : 'disabled'}> Run the shift on ${esc(dayLabel(S.date))} as a holiday shift (${esc(st.holidayStart)}–${esc(st.holidayStart)})</label></section>`;
   h += `<section class="panel"><h2>How auto-schedule assigns work</h2><ul class="rules">
     <li><b>OT cases</b> go to second on-calls. The coordinator gets cases last so they stay free to coordinate. Each theatre runs one case at a time.</li>
     <li><b>Emergency calls</b> go to the first on-call who is free soonest. A second on-call is pulled in when that is faster, most readily for top-priority calls.</li>
     <li><b>APS reviews</b> and <b>preop assessments</b> go to first on-calls.</li>
+    <li><b>First on-call duties:</b> each first on-call holds one duty for the 24 h on-call: APS, Trauma &amp; Code blue · Assessment · Emergency call · OB/GYN, set in the team and changeable on the day. Work of that kind goes to the duty holder first.</li>
+    <li><b>Weekday mornings</b> (07:30–14:00): first on-calls work their outside duties only. At night the second on-call can still post them inside OT.</li>
     <li><b>Obs &amp; Gyne</b> work goes to the Obs &amp; Gyne first on-call, who is kept on labour ward. A second on-call covers when they are tied up, straight away for Cat 1.</li>
     <li><b>Posting first on-calls:</b> a second on-call sets each first on-call <i>Inside OT</i> or <i>Outside OT</i> for the shift.</li>
     <li><b>Third on-call</b> oversees the shift in a read-only view and gets no tasks.</li>
@@ -806,8 +893,8 @@ function showSwap(id) {
     <p class="empty" style="margin:0">${d ? `Who covers ${esc(d.name)}'s place (${esc(tierLabel(d))}) on ${esc(dayLabel(S.date))}? Their tasks and roles move to the new doctor.` : `Pick a doctor to join the ${esc(dayLabel(S.date))} shift.`}</p>
     ${d ? `<div class="row"><label class="row" style="gap:5px;font-size:13px"><input type="checkbox" data-act="slot-coord" data-id="${d.id}" ${d.coordinator ? 'checked' : ''} ${d.tier !== 'second' ? 'disabled' : ''}> Coordinator</label>
       <label class="row" style="gap:5px;font-size:13px"><input type="checkbox" data-act="slot-lp" data-id="${d.id}" ${d.listPrep ? 'checked' : ''}> List prep</label>
-      <label class="row" style="gap:5px;font-size:13px"><input type="checkbox" data-act="slot-obs" data-id="${d.id}" ${d.obs ? 'checked' : ''} ${d.tier !== 'first' ? 'disabled' : ''}> Obs &amp; Gyne</label></div>` : ''}
-    ${d ? grp('Same grade', sameFirst.filter(x => x.tier === d.tier)) + grp('Other grades', sameFirst.filter(x => x.tier !== d.tier)) : grp('Third on-call', pool.filter(x => x.tier === 'third')) + grp('Second on-call', pool.filter(x => x.tier === 'second')) + grp('First on-call', pool.filter(x => x.tier === 'first'))}
+      ${d.tier === 'first' ? dutyPicker(d) : ''}</div>` : ''}
+    ${d ? grp('Same grade', sameFirst.filter(x => x.tier === d.tier)) + grp('Other grades', sameFirst.filter(x => x.tier !== d.tier)) : grp('Third on-call', pool.filter(x => x.tier === 'third')) + grp('Second on-call', pool.filter(x => x.tier === 'second')) + grp('First on-call', pool.filter(x => x.tier === 'first')) + grp('Trainee', pool.filter(x => x.tier === 'trainee'))}
     ${pool.length ? '' : '<p class="empty">Everyone in the staff list is already on this shift. Add new staff under Rota &amp; teams.</p>'}
     ${d ? `<div class="row"><span class="spacer"></span><button class="btn sm danger ghost" data-act="slot-remove" data-id="${d.id}">Remove ${esc(d.name)} from this shift</button></div>` : ''}</div></div>`;
 }
@@ -825,20 +912,21 @@ function newTask(type) {
   draft = { id: uid(), type, title: '', location: '', notes: '', priority: type === 'em' ? 2 : 3, duration: ty.dur,
     earliest: fmt(nr < shiftLen() ? Math.ceil(nr / 5) * 5 : 0), theatre: '', asa: '', doctorId: null, start: null,
     fixDoctor: false, fixStart: false, status: 'pending', seq: Math.max(0, ...S.tasks.map(x => x.seq || 0)) + 1, _new: true, postedBy: myName() };
-  if (role() === 'first') { draft.fixDoctor = true; draft.doctorId = ui.meId; }
+  if (type === 'code') draft.priority = 1;
+  if (junior()) { draft.fixDoctor = true; draft.doctorId = ui.meId; }
   renderSheet();
 }
 function renderSheet() {
   if (!draft) { $layer.innerHTML = ''; return; }
   const t = draft; const ty = TYPES[t.type];
-  const docOpts = role() === 'first'
+  const docOpts = junior()
     ? `<option value="${ui.meId}" ${t.fixDoctor && t.doctorId === ui.meId ? 'selected' : ''}>Me (${esc(myName())})</option><option value="" ${!(t.fixDoctor && t.doctorId === ui.meId) ? 'selected' : ''}>Ask the 2nd on-call to assign</option>`
     : `<option value="">Auto (best fit)</option>` + S.doctors.filter(d => d.tier !== 'third').map(d => `<option value="${d.id}" ${t.fixDoctor && t.doctorId === d.id ? 'selected' : ''}>${esc(d.name)} · ${tierShort(d)}${inOT(d) ? ' (in OT)' : ''}${d.status === 'off' ? ' (off)' : ''}</option>`).join('');
   const thOpts = `<option value="">Auto (first free)</option>` + S.shift.theatres.map(x => `<option ${t.theatre === x && !t.theatreAuto ? 'selected' : ''}>${esc(x)}</option>`).join('');
   const obsThOpts = `<option value="">None – labour ward / ward</option>` + S.shift.theatres.map(x => `<option ${t.theatre === x ? 'selected' : ''}>${esc(x)}</option>`).join('');
-  const placeholders = { obs: 'e.g. Labour epidural / LSCS Cat 2', ot: 'e.g. Lap appendicectomy', em: 'e.g. ED resus – airway', aps: 'e.g. Epidural review', pre: 'e.g. Preop – hip fracture', list: "e.g. Tomorrow's emergency list" };
+  const placeholders = { code: 'e.g. Code blue – Ward 5, bed 12', obs: 'e.g. Labour epidural / LSCS Cat 2', ot: 'e.g. Lap appendicectomy', em: 'e.g. ED resus – airway', aps: 'e.g. Epidural review', pre: 'e.g. Preop – hip fracture', list: "e.g. Tomorrow's emergency list" };
   $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="taskForm" autocomplete="off">
-    <div class="row"><h3>${t._new ? (role() === 'first' ? 'Post a case or duty' : 'New task') : 'Edit task'}</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
+    <div class="row"><h3>${t._new ? (junior() ? 'Post a case or duty' : 'New task') : 'Edit task'}</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
     <div class="typepick">${Object.entries(TYPES).map(([k, v]) => `<button type="button" class="${v.cls}" aria-pressed="${t.type === k}" data-act="ftype" data-type="${k}">${v.short}</button>`).join('')}</div>
     <label class="f">What<input id="f-title" name="title" value="${esc(t.title)}" placeholder="${placeholders[t.type]}" required></label>
     <div class="grid2">
@@ -855,7 +943,7 @@ function renderSheet() {
     </div>
     <label class="f">Notes<textarea id="f-notes" name="notes" placeholder="Airway concerns, anticoagulation, fasting status…">${esc(t.notes)}</textarea></label>
     <div class="row">${!t._new ? (ui.confirmDel ? `<span class="confirm">Delete this task? <button type="button" class="btn sm danger" data-act="del-yes">Delete</button><button type="button" class="btn sm" data-act="del-no">Keep</button></span>` : `<button type="button" class="btn sm danger ghost" data-act="del">Delete</button>`) : ''}
-      <span class="spacer"></span><button type="button" class="btn" data-act="close">Cancel</button><button type="submit" class="btn primary">${t._new ? (role() === 'first' ? 'Post' : 'Add and schedule') : 'Save'}</button></div>
+      <span class="spacer"></span><button type="button" class="btn" data-act="close">Cancel</button><button type="submit" class="btn primary">${t._new ? (junior() ? 'Post' : 'Add and schedule') : 'Save'}</button></div>
   </form></div>`;
   const ti = document.getElementById('f-title'); if (ti && t._new) ti.focus();
 }
@@ -886,10 +974,10 @@ function commitDraft() {
 function handoverText() {
   const sh = S.shift; const coord = S.doctors.find(d => d.coordinator); const lp = S.doctors.filter(d => d.listPrep);
   const line = t => `  ${t.start != null ? fmt(t.start) + '–' + fmt(t.start + t.duration) : '--:--'}  ${TYPES[t.type].short}: ${t.title}${t.location ? ' (' + t.location + ')' : ''}${t.theatre ? ' [' + t.theatre + ']' : ''} · ${PRI[t.type][t.priority]}${t.status === 'active' ? ' · IN PROGRESS' : t.status === 'help' ? ' · NEEDS HELP' + (t.helpBy ? ' (' + t.helpBy + ' going)' : '') : ''}`;
-  let out = `ON-CALL PLAN · ${dayLabel(S.date)} · ${sh.start}–${fmt(shiftLen())}${isHoliday(S.date, S) ? ' (holiday)' : ''}${S.teamId ? ' · ' + teamName(S.teamId) : ''}\nCoordinator: ${coord ? coord.name + (coord.ext ? ' (ext ' + coord.ext + ')' : '') : '—'}\nList prep: ${lp.map(d => d.name).join(', ') || '—'}\n${S.doctors.filter(d => d.tier === 'third').map(d => '3rd on-call: ' + d.name + (d.ext ? ' (ext ' + d.ext + ')' : '') + '\n').join('')}`;
+  let out = `ON-CALL PLAN · ${dayLabel(S.date)} · ${sessionName(S)} ${sh.start}–${fmt(shiftLen())}${S.teamId ? ' · ' + teamName(S.teamId) : ''}\nCoordinator: ${coord ? coord.name + (coord.ext ? ' (ext ' + coord.ext + ')' : '') : '—'}\nList prep: ${lp.map(d => d.name).join(', ') || '—'}\n${S.doctors.filter(d => d.tier === 'third').map(d => '3rd on-call: ' + d.name + (d.ext ? ' (ext ' + d.ext + ')' : '') + '\n').join('')}`;
   for (const d of S.doctors.filter(x => x.tier !== 'third')) {
     const ts = S.tasks.filter(t => t.doctorId === d.id && t.status !== 'done').sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
-    out += `\n${d.name} – ${tierLabel(d)}${d.tier === 'first' ? ', ' + postLabel(d) : ''}${d.coordinator ? ', coordinator' : ''}${d.ext ? ' – ext ' + d.ext : ''}${d.status !== 'available' ? ' – ' + DOC_STATUS[d.status] : ''}\n`;
+    out += `\n${d.name} – ${tierLabel(d)}${d.tier === 'first' ? (S.session === 'am' ? '' : ', ' + postLabel(d)) + (d.duty && dutyPhone(d.duty) ? ', duty phone ' + dutyPhone(d.duty) : '') : ''}${d.coordinator ? ', coordinator' : ''}${d.ext ? ' – ext ' + d.ext : ''}${d.status !== 'available' ? ' – ' + DOC_STATUS[d.status] : ''}\n`;
     out += ts.length ? ts.map(line).join('\n') + '\n' : '  (free)\n';
   }
   const un = S.tasks.filter(t => !t.doctorId && t.status !== 'done');
@@ -1057,10 +1145,10 @@ function viewShare() {
 function viewMine() {
   const d = meDoc();
   if (!d && meStaff()) {
-    const next = []; for (let i = 0; i < 45 && next.length < 3; i++) { const dt = addDays(currentShiftDate(), i); const sh = R.shifts[dt];
+    const next = []; for (let i = 0; i < 45 && next.length < 3; i++) { const dt = addDays(keyDate(currentShiftDate()), i); const sh = R.shifts[dt];
       const on = sh ? sh.doctors.some(x => x.id === ui.meId) : (R.teams.find(t => t.id === R.rota[dt]) || { members: [] }).members.some(m => m.staffId === ui.meId);
       if (on) next.push(dt); }
-    return `<section class="panel"><h2>My work</h2><p style="margin:0">You are not on the ${esc(dayLabel(S.date))} shift.</p>
+    return `<section class="panel"><h2>My work</h2><p style="margin:0">You are not on the ${esc(dayLabel(S.date))} ${esc(sessionName(S).toLowerCase())} shift.</p>
       <p class="empty" style="margin:0">${next.length ? 'Your next shifts: ' + next.map(x => `<button class="btn sm" data-act="openshift" data-date="${x}">${esc(dayLabel(x))}</button>`).join(' ') : 'No shifts found for you in the rota for the next 6 weeks.'}</p></section>`;
   }
   if (!d) return `<section class="panel"><h2>My work</h2><p class="empty" style="margin:0">Choose who you are on this phone to see your own cases and duties here.</p><div class="row"><button class="btn primary" data-act="whoami">Choose who I am</button></div></section>`;
@@ -1069,9 +1157,9 @@ function viewMine() {
   const open = mine.filter(t => t.status !== 'done'), done = mine.filter(t => t.status === 'done');
   let h = exampleBanner();
   h += `<section class="panel"><div class="doc-h"><div style="min-width:0"><div class="doc-name">${esc(d.name)}</div>
-    <div class="chips"><span class="chip ${d.tier === 'second' ? 'tier2' : 'tier1'}">${esc(tierLabel(d))}</span>${postChip(d)}${d.coordinator ? '<span class="chip coord">Coordinator</span>' : ''}${d.listPrep ? '<span class="chip lp">List prep</span>' : ''}</div></div>
+    <div class="chips"><span class="chip ${d.tier === 'second' ? 'tier2' : 'tier1'}">${esc(tierLabel(d))}</span>${dutyChips(d)}${S.session === 'am' ? '' : postChip(d)}${d.coordinator ? '<span class="chip coord">Coordinator</span>' : ''}${d.listPrep ? '<span class="chip lp">List prep</span>' : ''}</div></div>
     <select class="status" data-act="docstatus" data-id="${d.id}" aria-label="My availability">${Object.entries(DOC_STATUS).map(([k, v]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-    ${d.tier === 'first' ? `<p class="empty" style="margin:0">Your post: <b>${esc(postLabel(d))}</b>. The second on-call sets this.</p>` : ''}</section>`;
+    ${d.tier === 'first' ? `<p style="margin:0">Your duty: <b>${esc(d.duty ? DUTY[d.duty] : 'none yet')}</b>${d.duty && dutyPhone(d.duty) ? ` · duty phone <b class="num">${esc(dutyPhone(d.duty))}</b>` : ''}</p>${S.session === 'am' ? '' : `<p class="empty" style="margin:0">Tonight's post: <b>${esc(postLabel(d))}</b>. The second on-call sets this.</p>`}` : ''}</section>`;
   h += helpQueue(true);
   h += `<section style="display:grid;gap:8px"><h2>Post a case or duty you received</h2><div class="row">` + Object.entries(TYPES).map(([k, v]) =>
     `<button class="btn ${v.cls}" data-act="new" data-type="${k}"><span class="dot"></span>${v.short}</button>`).join('') + `</div></section>`;
@@ -1091,7 +1179,7 @@ function showWho() {
   const D = R.staff.map(x => Object.assign({}, x, { name: x.name + (S.doctors.some(y => y.id === x.id) ? ' ●' : '') }));
   $layer.innerHTML = `<div class="overlay" data-act="close-bg"><div class="sheet"><div class="row"><h3>Who are you?</h3><span class="spacer"></span><button class="btn sm ghost" data-act="close">Close</button></div>
     <p class="empty" style="margin:0">Pick your name once. The app then shows your own work on every shift you are rostered on. ● = on the shift you are viewing.</p>
-    ${grp('Third on-call · overseeing', D.filter(d => d.tier === 'third'))}${grp('Second on-call', D.filter(d => d.tier === 'second'))}${grp('First on-call', D.filter(d => d.tier === 'first' && !d.obs))}${grp('First on-call · Obs &amp; Gyne', D.filter(d => d.obs))}
+    ${grp('Third on-call · overseeing', D.filter(d => d.tier === 'third'))}${grp('Second on-call', D.filter(d => d.tier === 'second'))}${grp('First on-call', D.filter(d => d.tier === 'first' && !d.obs))}${grp('First on-call · OB/GYN', D.filter(d => d.obs))}${grp('Trainee', D.filter(d => d.tier === 'trainee'))}
     ${D.length ? '' : '<p class="empty">No staff added yet. Add them under Rota &amp; teams first.</p>'}
     <div class="who-list"><button class="btn" data-act="setme" data-id="observer" aria-pressed="${ui.meId === 'observer'}">Just watching (read-only)</button></div></div></div>`;
 }
@@ -1130,10 +1218,11 @@ document.addEventListener('click', e => {
   if (a === 'edit' && t && !canEditTask(t)) { toast("Only the second on-call can change another doctor's task"); return; }
   switch (a) {
     case 'whoami': showWho(); break;
-    case 'nav-prev': case 'nav-next': ui.shiftDate = addDays(S.date, a === 'nav-prev' ? -1 : 1); pointShift(); render(); break;
+    case 'nav-prev': case 'nav-next': ui.shiftDate = stepKey(S.key, a === 'nav-prev' ? -1 : 1); pointShift(); render(); break;
     case 'nav-now': ui.shiftDate = currentShiftDate(); pointShift(); render(); break;
     case 'openshift': ui.shiftDate = el.dataset.date; pointShift(); if (ui.tab === 'team' || ui.tab === 'mine' && !meDoc()) ui.tab = 'board'; writePref('tab', ui.tab); render(); window.scrollTo(0, 0); break;
     case 'swap': showSwap(id); break;
+    case 'autoduty': autoDuties(S.doctors); logChange('Empty duties filled'); autoSchedule(); commit(); toast('Every first on-call now has a duty'); break;
     case 'addto': showSwap(null); break;
     case 'swapto': {
       const from = doc(el.dataset.from), sf = staffOf(id); if (!from || !sf) break;
@@ -1143,33 +1232,33 @@ document.addEventListener('click', e => {
       logChange(`${sf.name} replaced ${from.name} (${tierLabel(from)})`);
       $layer.innerHTML = ''; autoSchedule(); commit(); toast(`${sf.name} now covers ${from.name}'s place`); break;
     }
-    case 'addpick': { const sf = staffOf(id); if (!sf) break; S.doctors.push({ id: sf.id, name: sf.name, tier: sf.tier, obs: !!sf.obs, coordinator: false, listPrep: false, ext: sf.ext || '', status: 'available' });
+    case 'addpick': { const sf = staffOf(id); if (!sf) break; S.doctors.push({ id: sf.id, name: sf.name, tier: sf.tier, obs: !!sf.obs && sf.tier === 'first', duty: sf.tier === 'first' && sf.obs ? 'obs' : '', coordinator: false, listPrep: false, ext: sf.ext || '', status: 'available' });
       logChange(`${sf.name} added to the shift (${tierLabel(sf)})`); $layer.innerHTML = ''; autoSchedule(); commit(); toast(`${sf.name} added`); break; }
     case 'slot-remove': { const d0 = doc(id); if (!d0) break; S.doctors = S.doctors.filter(x => x.id !== id);
       S.tasks.forEach(x => { if (x.doctorId === id) { x.doctorId = null; x.fixDoctor = false; x.fixStart = false; if (x.status === 'pending') x.start = null; } });
       logChange(`${d0.name} removed from the shift`); $layer.innerHTML = ''; autoSchedule(); commit(); toast(`${d0.name} removed – their tasks were reassigned`); break; }
     case 'carry': {
-      const prev = R.shifts[addDays(S.date, -1)]; if (!prev) break; let n = 0;
-      prev.tasks.filter(t => t.status !== 'done' && !t.carriedTo).forEach(t => { n++; t.carriedTo = S.date;
+      const prev = R.shifts[stepKey(S.key, -1)]; if (!prev) break; let n = 0;
+      prev.tasks.filter(t => t.status !== 'done' && !t.carriedTo).forEach(t => { n++; t.carriedTo = S.key;
         S.tasks.push(Object.assign({}, t, { id: uid(), doctorId: null, fixDoctor: false, fixStart: false, start: null, status: t.status === 'help' ? 'pending' : 'pending', helpBy: '', carriedTo: undefined, carriedFrom: prev.date, earliest: S.shift.start, seq: Math.max(0, ...S.tasks.map(x => x.seq || 0)) + 1, notes: (t.notes ? t.notes + ' · ' : '') + 'Carried over from ' + dayLabel(prev.date) })); });
       logChange(`${n} unfinished task${n === 1 ? '' : 's'} carried over from ${dayLabel(prev.date)}`); autoSchedule(); commit(); toast(`${n} task${n === 1 ? '' : 's'} carried over and assigned`); break;
     }
     case 'fill': {
-      const from = document.getElementById('fillFrom').value || currentShiftDate(), firstId = document.getElementById('fillFirst').value, n = Number(document.getElementById('fillDays').value) || 28;
+      const from = document.getElementById('fillFrom').value || keyDate(currentShiftDate()), firstId = document.getElementById('fillFirst').value, n = Number(document.getElementById('fillDays').value) || 28;
       const order = R.teams.map(t => t.id); let i = Math.max(0, order.indexOf(firstId));
-      for (let k = 0; k < n; k++, i++) { const dt = addDays(from, k); R.rota[dt] = order[i % order.length]; const sh = R.shifts[dt]; if (sh && sh.teamId !== R.rota[dt]) { applyTeamToShift(sh, R.rota[dt]); } }
+      for (let k = 0; k < n; k++, i++) { const dt = addDays(from, k); R.rota[dt] = order[i % order.length]; [dt, dt + '@am'].forEach(kk => { const sh = R.shifts[kk]; if (sh && sh.teamId !== R.rota[dt]) applyTeamToShift(sh, R.rota[dt]); }); }
       pointShift(); commit(); toast(`Rota filled for ${n} days`); break;
     }
     case 'team-add': R.teams.push({ id: uid(), name: 'Team ' + String.fromCharCode(65 + R.teams.length), members: [] }); commit(); break;
     case 'team-del': { const tid = el.dataset.team; R.teams = R.teams.filter(t => t.id !== tid); Object.keys(R.rota).forEach(k => { if (R.rota[k] === tid) delete R.rota[k]; }); commit(); break; }
     case 'tm-del': { const tm = R.teams.find(t => t.id === el.dataset.team); tm.members = tm.members.filter(m => m.staffId !== id); commit(); break; }
-    case 'sf-add': { const k = el.dataset.tier; R.staff.push({ id: uid(), name: { third: 'New 3rd on-call', second: 'New 2nd on-call', first: 'New 1st on-call', obs: 'New Obs & Gyne' }[k], tier: k === 'obs' ? 'first' : k, obs: k === 'obs', ext: '' }); commit(); break; }
+    case 'sf-add': { const k = el.dataset.tier; R.staff.push({ id: uid(), name: { third: 'New 3rd on-call', second: 'New 2nd on-call', first: 'New 1st on-call', obs: 'New OB/GYN on-call', trainee: 'New trainee' }[k], tier: k === 'obs' ? 'first' : k, obs: k === 'obs', ext: '' }); commit(); break; }
     case 'sf-del': { R.staff = R.staff.filter(x => x.id !== id); R.teams.forEach(t => t.members = t.members.filter(m => m.staffId !== id)); commit(); break; }
     case 'hol-add': { const v = document.getElementById('holDate').value; if (!v) { toast('Pick a date first'); break; } if (!R.settings.holidays.includes(v)) R.settings.holidays.push(v); const sh = R.shifts[v]; if (sh) rewindow(sh); commit(); toast(dayLabel(v) + ' is now a holiday shift'); break; }
     case 'hol-del': { const v = el.dataset.date; R.settings.holidays = R.settings.holidays.filter(x => x !== v); const sh = R.shifts[v]; if (sh) rewindow(sh); commit(); break; }
     case 'setme': {
       ui.meId = id; writePref('meId', id); $layer.innerHTML = ''; ui.shiftDate = currentShiftDate(); pointShift();
-      const r = role(); ui.tab = r === 'first' ? 'mine' : r === 'third' ? 'board' : (ui.tab === 'team' ? 'board' : ui.tab); writePref('tab', ui.tab);
+      const r = role(); ui.tab = junior() ? 'mine' : r === 'third' ? 'board' : (ui.tab === 'team' ? 'board' : ui.tab); writePref('tab', ui.tab);
       render(); window.scrollTo(0, 0); toast(meDoc() ? 'You are ' + meDoc().name : 'Observer view – read-only'); break;
     }
     case 'setst': setTaskStatus(t, el.dataset.v); break;
@@ -1211,8 +1300,8 @@ document.addEventListener('click', e => {
       for (const x of [t, o]) if (x.theatreAuto) x.theatreAuto = false;
       autoSchedule(); commit(); break;
     }
-    case 'clear-example': R = starterRoot(); ui.meId = ''; writePref('meId', ''); ui.shiftDate = currentShiftDate(); R.rota[ui.shiftDate] = 'team-a';
-      for (let k = 1; k < 28; k++) R.rota[addDays(ui.shiftDate, k)] = 'team-a';
+    case 'clear-example': R = starterRoot(); ui.meId = ''; writePref('meId', ''); ui.shiftDate = currentShiftDate();
+      for (let k = -1; k < 28; k++) R.rota[addDays(keyDate(ui.shiftDate), k)] = 'team-a';
       pointShift(); ui.tab = 'team'; writePref('tab', 'team'); commit(); toast('Blank board – add your staff and teams'); break;
     case 'reset': ui.confirmReset = true; render(); break;
     case 'reset-no': ui.confirmReset = false; render(); break;
@@ -1223,14 +1312,15 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const el = e.target; const a = el.dataset.act; if (!a) return;
   const d = el.dataset.id ? doc(el.dataset.id) : null;
-  const manageCh = new Set(['rota-team', 'tm-coord', 'tm-lp', 'tm-obs', 'tm-add', 'tm-name', 'sf-name', 'sf-tier', 'sf-obs', 'sf-ext', 'set-ws', 'set-we', 'set-hs', 'set-th', 'set-wk']);
+  const manageCh = new Set(['set-morning', 'set-ms', 'set-me', 'rota-team', 'tm-coord', 'tm-lp', 'tm-duty', 'tm-third', 'set-ph', 'tm-add', 'tm-name', 'sf-name', 'sf-tier', 'sf-obs', 'sf-ext', 'set-ws', 'set-we', 'set-hs', 'set-th', 'set-wk']);
   if (manageCh.has(a)) { if (!canManage()) { render(); toast('Only second on-calls can change the rota and teams'); return; } }
   else if (!canEdit() && a !== 'showdone') { render(); toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
   const tm = el.dataset.team ? R.teams.find(t => t.id === el.dataset.team) : null;
   const mem = tm && el.dataset.id ? tm.members.find(m => m.staffId === el.dataset.id) : null;
   const sf = el.dataset.id ? staffOf(el.dataset.id) : null;
-  const futureShifts = () => Object.values(R.shifts).filter(x => x.date >= currentShiftDate());
+  const futureShifts = () => Object.values(R.shifts).filter(x => x.date >= keyDate(currentShiftDate()));
   switch (a) {
+    case 'duty': d.duty = el.value; d.obs = el.value === 'obs'; logChange(`${d.name}: ${el.value ? DUTY[el.value] : 'no duty'}`); autoSchedule(); commit(); toast(`${d.name}: ${el.value ? DUTY[el.value] : 'no duty'}`); break;
     case 'setstatus': setTaskStatus(S.tasks.find(x => x.id === el.dataset.id), el.value); break;
     case 'assign': {
       const t = S.tasks.find(x => x.id === el.dataset.id); if (!t) break;
@@ -1247,21 +1337,24 @@ document.addEventListener('change', e => {
     case 'showdone': ui.showDone = el.checked; render(); break;
     case 'rota-team': {
       const dt = el.dataset.date; if (el.value) R.rota[dt] = el.value; else delete R.rota[dt];
-      const sh = R.shifts[dt]; if (sh) { const oldName = teamName(sh.teamId); const prevS = S; S = sh; applyTeamToShift(sh, el.value); logChange(`Team changed${oldName ? ' from ' + oldName : ''} to ${teamName(el.value) || 'none'}`); S = prevS; }
+      [dt, dt + '@am'].forEach(kk => { const sh = R.shifts[kk]; if (sh) { const oldName = teamName(sh.teamId); const prevS = S; S = sh; applyTeamToShift(sh, el.value); logChange(`Team changed${oldName ? ' from ' + oldName : ''} to ${teamName(el.value) || 'none'}`); S = prevS; } });
       pointShift(); commit(); toast(`${dayLabel(dt)}: ${teamName(el.value) || 'no team'}`); break;
     }
     case 'tm-name': tm.name = el.value.trim() || tm.name; commit(); break;
     case 'tm-coord': tm.members.forEach(m => m.coordinator = m.staffId === el.dataset.id); commit(); break;
     case 'tm-lp': mem.listPrep = el.checked; commit(); break;
-    case 'tm-obs': mem.obs = el.checked; commit(); break;
-    case 'tm-add': if (el.value) { const x = staffOf(el.value); tm.members.push({ staffId: x.id, coordinator: false, listPrep: false, obs: !!x.obs }); commit(); } break;
+    case 'tm-duty': mem.duty = el.value; mem.obs = el.value === 'obs'; commit(); break;
+    case 'tm-third': mem.thirdRole = el.value; commit(); break;
+    case 'tm-add': if (el.value) { const x = staffOf(el.value); tm.members.push({ staffId: x.id, coordinator: false, listPrep: false, obs: !!x.obs, duty: x.tier === 'first' && x.obs ? 'obs' : '' }); commit(); } break;
     case 'sf-name': { const v = el.value.trim(); if (!v) { render(); break; } sf.name = v; R.example = false; Object.values(R.shifts).forEach(x => x.doctors.forEach(y => { if (y.id === sf.id) y.name = v; })); commit(); break; }
     case 'sf-ext': sf.ext = el.value.trim(); Object.values(R.shifts).forEach(x => x.doctors.forEach(y => { if (y.id === sf.id) y.ext = sf.ext; })); commit(); break;
-    case 'sf-tier': sf.tier = el.value; if (sf.tier !== 'first') sf.obs = false; R.teams.forEach(t => t.members.forEach(m => { if (m.staffId === sf.id) { if (sf.tier !== 'second') m.coordinator = false; if (sf.tier !== 'first') m.obs = false; } })); commit(); break;
+    case 'sf-tier': sf.tier = el.value; if (sf.tier !== 'first') sf.obs = false; R.teams.forEach(t => t.members.forEach(m => { if (m.staffId === sf.id) { if (sf.tier !== 'second') m.coordinator = false; if (sf.tier !== 'first') { m.obs = false; m.duty = ''; } if (sf.tier !== 'third') m.thirdRole = ''; } })); commit(); break;
     case 'sf-obs': sf.obs = el.checked; commit(); break;
-    case 'set-ws': case 'set-we': case 'set-hs': {
+    case 'set-ph': R.settings.dutyPhones = Object.assign({}, R.settings.dutyPhones, { [el.dataset.k]: el.value.trim() }); commit(); break;
+    case 'set-morning': R.settings.morning = el.checked; ui.shiftDate = currentShiftDate(); pointShift(); commit(); break;
+    case 'set-ws': case 'set-we': case 'set-hs': case 'set-ms': case 'set-me': {
       const v = el.value; if (!v) { render(); break; }
-      R.settings[{ 'set-ws': 'weekdayStart', 'set-we': 'weekdayEnd', 'set-hs': 'holidayStart' }[a]] = v;
+      R.settings[{ 'set-ws': 'weekdayStart', 'set-we': 'weekdayEnd', 'set-hs': 'holidayStart', 'set-ms': 'morningStart', 'set-me': 'morningEnd' }[a]] = v;
       futureShifts().forEach(rewindow); pointShift(); autoSchedule(); commit(); toast('Shift times updated'); break;
     }
     case 'set-th': R.settings.theatres = el.value.split(',').map(x => x.trim()).filter(Boolean); futureShifts().forEach(x => x.shift.theatres = R.settings.theatres.slice()); autoSchedule(); commit(); break;
@@ -1269,7 +1362,6 @@ document.addEventListener('change', e => {
     case 'sh-hol': S.holiday = el.checked; rewindow(S); logChange(el.checked ? 'Run as a holiday shift' : 'Run as a weekday shift'); autoSchedule(); commit(); break;
     case 'slot-coord': { const d0 = doc(el.dataset.id); S.doctors.forEach(x => { if (x.tier === 'second') x.coordinator = el.checked ? x.id === d0.id : (x.id === d0.id ? false : x.coordinator); }); logChange(`${d0.name} ${el.checked ? 'is' : 'is no longer'} coordinator`); autoSchedule(); commit(); break; }
     case 'slot-lp': { const d0 = doc(el.dataset.id); d0.listPrep = el.checked; logChange(`${d0.name} ${el.checked ? 'does' : 'no longer does'} list prep`); autoSchedule(); commit(); break; }
-    case 'slot-obs': { const d0 = doc(el.dataset.id); d0.obs = el.checked; logChange(`${d0.name} ${el.checked ? 'covers' : 'no longer covers'} Obs & Gyne`); autoSchedule(); commit(); break; }
   }
 });
 
@@ -1284,7 +1376,7 @@ if (R.example) save();
 (() => { try { const q = new URLSearchParams(location.search).get('join'); if (!q) return; history.replaceState(null, '', location.pathname + location.hash);
   const c = normCode(q); if (!c || c === sync.code) return; if (!sync.code) { joinBoard(c); } else { sync.joinPrefill = c; ui.tab = 'team'; toast('You are on another team board. Leave it first to join this one.'); } } catch (e) {} })();
 if (ui.meId && ui.meId !== 'observer' && !staffOf(ui.meId)) ui.meId = '';
-if (!readPref('tab') && role() === 'first') ui.tab = 'mine';
+if (!readPref('tab') && junior()) ui.tab = 'mine';
 render(); renderSyncChip();
 if (sync.code && !ui.meId && R.staff.length) showWho();
 // roll over to the next shift when the current one ends, unless someone is looking at another date

@@ -22,7 +22,9 @@ One board holds the whole department. Under **Rota & teams**:
 - **All staff:** everyone, once, with their grade (3rd, 2nd, 1st on-call) and whether they usually cover Obs & Gyne.
 - **Teams:** the usual group for a night, with coordinator, list prep and Obs & Gyne marked.
 - **Rota:** which team is on each date. *Fill rota* rotates the teams in order for 1–8 weeks.
-- **Shift times:** weekday 18:00–07:30, holiday 08:00–08:00. Weekend days and public holiday dates use the holiday shift.
+- **Shift times:** weekday morning duties 07:30–14:00, weekday night 18:00–07:30, holiday 08:00–08:00. Weekend days (Fri/Sat by default) and public holiday dates use the holiday shift.
+- **First on-call duties** (held for the whole 24 h on-call, each with its duty phone): APS, Trauma & Code blue · Assessment · Emergency call · OB/GYN. Set in the team, changeable on the day. Work of that kind goes to the duty holder first; in the morning session first on-calls do only their outside duty.
+- **Third on-call** roles: Cardiac anaesthesia, Regular OT. **Trainee on-call** can be added to a team.
 
 The app always opens on the shift running now (at 03:00 that is the shift that started at 18:00 the evening before). Use ‹ › to look at other nights.
 
