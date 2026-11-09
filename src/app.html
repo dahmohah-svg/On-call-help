@@ -1,0 +1,736 @@
+<title>On-Call Board</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky shift bar + tabbed workspace (Board / Timeline / Tasks / Team). Task colours follow the ISO anaesthetic syringe-label convention. */
+:root {
+  --bg: #f3f5f4;
+  --surface: #ffffff;
+  --surface-2: #e8edeb;
+  --fg: #16201d;
+  --muted: #5b6a65;
+  --line: #d3dbd8;
+  --accent: #1d6b58;
+  --accent-fg: #ffffff;
+  --warn: #b25e00;
+  --crit: #c62828;
+  --ok: #2e7d32;
+  /* syringe-label colours */
+  --c-ot: #7b3fa3;       /* violet – vasopressors */
+  --c-em: #e0262f;       /* fluorescent red – NMB */
+  --c-aps: #1f6fc7;      /* blue – opioids */
+  --c-pre: #d8a800;      /* yellow – induction agents */
+  --c-list: #858b92;     /* grey – local anaesthetics */
+  --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --r: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1514; --surface: #172120; --surface-2: #1f2b29; --fg: #e4ece9; --muted: #93a49e; --line: #2c3a37;
+    --accent: #4fc0a0; --accent-fg: #06201a; --warn: #f0a24a; --crit: #ff6b6b; --ok: #6cc070;
+    --c-ot: #b98ae0; --c-em: #ff5a5f; --c-aps: #6fb0ff; --c-pre: #f2cd3c; --c-list: #a6acb3;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1514; --surface: #172120; --surface-2: #1f2b29; --fg: #e4ece9; --muted: #93a49e; --line: #2c3a37;
+  --accent: #4fc0a0; --accent-fg: #06201a; --warn: #f0a24a; --crit: #ff6b6b; --ok: #6cc070;
+  --c-ot: #b98ae0; --c-em: #ff5a5f; --c-aps: #6fb0ff; --c-pre: #f2cd3c; --c-list: #a6acb3;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.45; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 1280px; margin: 0 auto; }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+/* header */
+header.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+.bar-in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-block: 10px; }
+.brand { font-family: var(--f-display); font-weight: 700; font-size: 22px; letter-spacing: .02em; text-transform: uppercase; display: flex; align-items: baseline; gap: 10px; }
+.brand small { font-family: var(--f-mono); font-weight: 400; font-size: 12px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.bar-stats { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.stat { font-size: 12px; padding: 3px 8px; border-radius: 99px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.stat b { color: var(--fg); font-family: var(--f-mono); }
+.stat.alert { background: color-mix(in srgb, var(--crit) 15%, transparent); color: var(--crit); }
+.stat.alert b { color: var(--crit); }
+nav.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+nav.tabs button { border: 0; background: none; padding: 8px 14px 9px; font-family: var(--f-display); font-weight: 600; font-size: 16px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 3px solid transparent; white-space: nowrap; }
+nav.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+
+main { padding-block: 16px 64px; display: grid; gap: 16px; }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.spacer { flex: 1; }
+
+/* buttons */
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); padding: 7px 12px; font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn.ghost { background: transparent; }
+.btn.danger { color: var(--crit); }
+.btn.sm { padding: 4px 9px; font-size: 13px; }
+.btn .dot, .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
+
+.t-ot { --c: var(--c-ot); } .t-em { --c: var(--c-em); } .t-aps { --c: var(--c-aps); } .t-pre { --c: var(--c-pre); } .t-list { --c: var(--c-list); }
+.dot { background: var(--c); }
+
+.banner { border: 1px dashed var(--line); border-radius: var(--r); padding: 10px 14px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+
+/* board */
+.queue { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: grid; gap: 10px; }
+.queue.has { border-color: color-mix(in srgb, var(--crit) 50%, var(--line)); }
+.docs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.doc { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.doc.off { opacity: .55; }
+.doc-h { display: flex; gap: 8px; align-items: flex-start; }
+.doc-name { font-weight: 700; font-size: 17px; line-height: 1.2; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.chip { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 4px; background: var(--surface-2); color: var(--muted); }
+.chip.tier2 { background: color-mix(in srgb, var(--c-ot) 16%, transparent); color: var(--c-ot); }
+.chip.tier1 { background: color-mix(in srgb, var(--c-aps) 16%, transparent); color: var(--c-aps); }
+.chip.coord { background: var(--accent); color: var(--accent-fg); }
+.chip.lp { background: color-mix(in srgb, var(--c-list) 22%, transparent); color: var(--fg); }
+select.status { border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; padding: 3px 6px; font-size: 13px; margin-left: auto; }
+.load { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; display: flex; }
+.load span { display: block; height: 100%; background: var(--c); }
+.load-l { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+.empty { color: var(--muted); font-size: 13px; }
+
+/* task item */
+.tasks { display: grid; gap: 6px; }
+.task { display: grid; grid-template-columns: 4px 1fr auto; gap: 0 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.task::before { content: ""; background: var(--c); grid-row: 1 / span 2; }
+.task.done { opacity: .5; }
+.task.done .t-title { text-decoration: line-through; }
+.task.active { border-color: var(--c); box-shadow: 0 0 0 1px var(--c); }
+.t-main { padding: 8px 0; min-width: 0; }
+.t-top { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 12px; color: var(--muted); }
+.t-type { font-family: var(--f-display); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--c); font-size: 13px; }
+.t-title { font-weight: 700; overflow-wrap: anywhere; }
+.t-meta { font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.t-side { padding: 8px 8px 8px 0; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.pri { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; white-space: nowrap; border: 1px solid currentColor; }
+.pri.p1 { color: var(--crit); background: color-mix(in srgb, var(--crit) 12%, transparent); }
+.pri.p2 { color: var(--warn); }
+.pri.p3 { color: var(--muted); }
+.pri.p4 { color: var(--muted); border-style: dashed; }
+.st { border: 1px solid var(--line); background: var(--surface-2); border-radius: 99px; font-size: 12px; padding: 2px 9px; font-weight: 700; white-space: nowrap; }
+.st.active { background: var(--c); color: #fff; border-color: var(--c); }
+.st.done { color: var(--ok); }
+.icon-btn { border: 0; background: none; color: var(--muted); font-size: 12px; padding: 2px 4px; text-decoration: underline; }
+.late { color: var(--crit); font-weight: 700; }
+
+/* timeline */
+.tl-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow-x: auto; }
+.tl { position: relative; min-width: max-content; }
+.tl-row { display: flex; border-bottom: 1px solid var(--line); min-height: 52px; }
+.tl-row:last-child { border-bottom: 0; }
+.tl-lab { position: sticky; left: 0; z-index: 2; width: 132px; flex: none; background: var(--surface); border-right: 1px solid var(--line); padding: 6px 10px; font-size: 13px; display: flex; flex-direction: column; justify-content: center; }
+.tl-lab b { font-size: 14px; }
+.tl-lab span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.tl-track { position: relative; flex: none; background-image: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px var(--hw)); }
+.tl-head .tl-track { background: none; }
+.tl-head .tl-lab { font-family: var(--f-display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.tl-hour { position: absolute; top: 0; bottom: 0; font-family: var(--f-mono); font-size: 11px; color: var(--muted); padding: 16px 0 0 4px; border-left: 1px solid var(--line); }
+.blk { position: absolute; top: 6px; bottom: 6px; border-radius: 5px; background: color-mix(in srgb, var(--c) 22%, var(--surface)); border-left: 3px solid var(--c); padding: 3px 6px; font-size: 11.5px; line-height: 1.25; overflow: hidden; border-top: 0; border-right: 0; border-bottom: 0; text-align: left; }
+.blk b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blk span { display: block; white-space: nowrap; overflow: hidden; color: var(--muted); font-family: var(--f-mono); font-size: 10.5px; }
+.blk.done { opacity: .45; }
+.now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--crit); z-index: 1; pointer-events: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* filters */
+.seg { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.seg button { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 4px 11px; font-size: 13px; font-weight: 700; display: inline-flex; gap: 6px; align-items: center; }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+/* team */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: grid; gap: 12px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+label.f { display: grid; gap: 3px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; min-width: 0; }
+.f input, .f select, .f textarea { font-size: 15px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; width: 100%; }
+.f textarea { min-height: 60px; resize: vertical; }
+.team-t { width: 100%; border-collapse: collapse; font-size: 14px; }
+.team-t th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px; border-bottom: 1px solid var(--line); }
+.team-t td { padding: 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.team-t input[type=text] { border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 5px 7px; width: 100%; min-width: 110px; }
+.team-t select { border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 5px; }
+.scroll-x { overflow-x: auto; }
+.rules { font-size: 13.5px; color: var(--muted); margin: 0; padding-left: 18px; display: grid; gap: 4px; max-width: 70ch; }
+.rules b { color: var(--fg); }
+
+/* sheet */
+.overlay { position: fixed; inset: 0; z-index: 20; background: rgb(0 0 0 / .45); display: flex; align-items: flex-end; justify-content: center; padding: env(safe-area-inset-top, 0px) 0 0; }
+.sheet { background: var(--surface); width: 100%; max-width: 620px; max-height: 92vh; overflow: auto; border-radius: 14px 14px 0 0; padding: 16px max(16px, env(safe-area-inset-left, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 14px; }
+@media (min-width: 700px) { .overlay { align-items: center; } .sheet { border-radius: 14px; } }
+.sheet h3 { margin: 0; font-family: var(--f-display); font-size: 22px; text-transform: uppercase; letter-spacing: .04em; }
+.typepick { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px; }
+.typepick button { border: 1px solid var(--line); border-top: 4px solid var(--c); background: var(--bg); border-radius: 6px; padding: 8px 6px; font-weight: 700; font-size: 13px; }
+.typepick button[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 18%, var(--surface)); border-color: var(--c); }
+pre.handover { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px; font-family: var(--f-mono); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 50vh; overflow: auto; }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 16px; border-radius: 99px; font-weight: 700; font-size: 14px; z-index: 30; }
+.confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--crit); }
+@media (prefers-reduced-motion: no-preference) { .btn, .seg button, nav.tabs button { transition: background .15s, border-color .15s, color .15s; } }
+</style>
+
+<header class="bar">
+  <div class="wrap bar-in">
+    <div class="brand">On-Call Board <small id="shiftLabel" class="num"></small></div>
+    <div class="bar-stats" id="stats"></div>
+  </div>
+  <div class="wrap">
+    <nav class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-tab="board">Board</button>
+      <button role="tab" data-tab="timeline">Schedule</button>
+      <button role="tab" data-tab="tasks">Tasks</button>
+      <button role="tab" data-tab="ot">OT list</button>
+      <button role="tab" data-tab="team">Team &amp; shift</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap" id="main"></main>
+<div id="layer"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- constants ---------- */
+const TYPES = {
+  ot:   { label: 'OT case',        short: 'OT',        cls: 't-ot',   dur: 90 },
+  em:   { label: 'Emergency call', short: 'Emergency', cls: 't-em',   dur: 30 },
+  aps:  { label: 'APS review',     short: 'APS',       cls: 't-aps',  dur: 20 },
+  pre:  { label: 'Preop assessment', short: 'Preop',   cls: 't-pre',  dur: 25 },
+  list: { label: 'List preparation', short: 'List prep', cls: 't-list', dur: 30 },
+};
+const PRI = {
+  ot:   ['', 'Immediate', 'Urgent', 'Expedited', 'Elective'],   // NCEPOD
+  em:   ['', 'Crash / now', 'Within 15 min', 'Within 1 h', 'When free'],
+  aps:  ['', 'Urgent', 'Soon', 'Routine round', 'Routine'],
+  pre:  ['', 'Urgent', 'Today', 'Before list', 'Elective'],
+  list: ['', 'Urgent', 'Soon', 'Before handover', 'Routine'],
+};
+const DOC_STATUS = { available: 'Available', busy: 'Tied up', off: 'Off / away' };
+const STORE_KEY = 'oncall-board-v1';
+
+/* ---------- state ---------- */
+let S = null;
+S = load() || example();
+let ui = { tab: readPref('tab') || 'board', filter: 'all', showDone: true, confirmReset: false };
+
+function uid() { return Math.random().toString(36).slice(2, 9); }
+function load() { try { const s = localStorage.getItem(STORE_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) {} }
+function readPref(k) { try { return localStorage.getItem('oncall-pref-' + k); } catch (e) { return null; } }
+function writePref(k, v) { try { localStorage.setItem('oncall-pref-' + k, v); } catch (e) {} }
+
+function todayISO() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+
+function example() {
+  const d = (name, tier, extra = {}) => ({ id: uid(), name, tier, coordinator: false, listPrep: false, ext: '', status: 'available', ...extra });
+  const doctors = [
+    d('Dr Huda', 'second', { coordinator: true, ext: '4410' }),
+    d('Dr Omar', 'second', { ext: '4411' }),
+    d('Dr Lina', 'second', { ext: '4412' }),
+    d('Dr Yusuf', 'first', { listPrep: true, ext: '4420' }),
+    d('Dr Mariam', 'first', { ext: '4421' }),
+    d('Dr Khalid', 'first', { ext: '4422' }),
+  ];
+  const t = (type, title, location, priority, duration, earliest, extra = {}) => ({
+    id: uid(), type, title, location, notes: '', priority, duration, earliest, theatre: '', asa: '',
+    doctorId: null, start: null, fixDoctor: false, fixStart: false, status: 'pending', seq: 0, ...extra });
+  const tasks = [
+    t('ot', 'LSCS – Cat 2', 'Labour ward, room 3', 1, 60, '08:30', { theatre: 'Obstetric OT', asa: '2' }),
+    t('ot', 'Emergency laparotomy – perforated DU', 'Ward 4B, bed 12', 2, 120, '09:00', { asa: '3E' }),
+    t('ot', 'Lap appendicectomy', 'Surgical ward, bed 7', 2, 75, '09:30', { asa: '1E' }),
+    t('ot', 'ORIF fractured neck of femur', 'Ortho ward, bed 3', 3, 150, '10:00', { asa: '3' }),
+    t('ot', 'I&D perianal abscess', 'Surgical ward, bed 15', 3, 40, '12:00', { asa: '2' }),
+    t('aps', 'APS morning round – epidurals & PCAs (6 pts)', 'All wards', 3, 60, '08:30'),
+    t('aps', 'PCA review – inadequate analgesia', 'Ward 6A, bed 22', 2, 20, '11:00'),
+    t('em', 'ED resus – airway support', 'Emergency dept, resus 2', 1, 45, '13:00'),
+    t('em', 'ICU – central line request', 'ICU bed 4', 3, 30, '14:00'),
+    t('pre', 'Preop – hip fracture', 'Ortho ward, bed 3', 2, 30, '09:00', { asa: '3' }),
+    t('pre', "Preop clinic – tomorrow's elective list (4 pts)", 'Preop clinic', 4, 90, '15:00'),
+    t('list', "Prepare tomorrow's emergency OT list", 'Coordinator office', 3, 30, '18:00'),
+  ];
+  tasks.forEach((x, i) => x.seq = i);
+  const st = { example: true, shift: { date: todayISO(), start: '08:00', hours: 24, theatres: ['Main OT 1', 'Main OT 2', 'Emergency OT', 'Obstetric OT'] }, doctors, tasks };
+  S = st; autoSchedule(); return st;
+}
+
+/* ---------- time helpers (minutes from shift start) ---------- */
+function hm2abs(hm) { if (!hm || !/^\d{1,2}:\d{2}$/.test(hm)) return null; const [h, m] = hm.split(':').map(Number); return h * 60 + m; }
+function startAbs() { return hm2abs(S.shift.start) ?? 480; }
+function rel(hm) { const a = hm2abs(hm); if (a == null) return 0; let r = a - startAbs(); if (r < 0) r += 1440; return r; }
+function fmt(relMin) { if (relMin == null) return '—'; const a = ((startAbs() + Math.round(relMin)) % 1440 + 1440) % 1440; return String(Math.floor(a / 60)).padStart(2, '0') + ':' + String(a % 60).padStart(2, '0'); }
+function shiftLen() { return (S.shift.hours || 24) * 60; }
+function nowRel() { const d = new Date(); let r = d.getHours() * 60 + d.getMinutes() - startAbs(); if (r < 0) r += 1440; return r; }
+
+/* ---------- scheduling ---------- */
+function doc(id) { return S.doctors.find(d => d.id === id); }
+function busyOf(pred) { return S.tasks.filter(t => t.start != null && t.doctorId !== undefined && pred(t)).map(t => [t.start, t.start + t.duration]); }
+function findSlot(lists, earliest, dur) {
+  const iv = lists.flat().sort((a, b) => a[0] - b[0]);
+  let t = earliest;
+  for (const [s, e] of iv) { if (e <= t) continue; if (s >= t + dur) break; t = Math.max(t, e); }
+  return t;
+}
+function eligible(t) {
+  const avail = S.doctors.filter(d => d.status !== 'off');
+  const by = tier => avail.filter(d => d.tier === tier);
+  let c;
+  if (t.type === 'ot') c = by('second');
+  else if (t.type === 'em') c = avail;
+  else if (t.type === 'list') c = avail.filter(d => d.listPrep);
+  else c = by('first');
+  if (!c.length) c = t.type === 'list' ? by('first') : avail;
+  if (!c.length) c = avail;
+  return c;
+}
+function penalty(d, t) {
+  let p = 0;
+  if (d.status === 'busy') p += 30;
+  if (t.type === 'ot' && d.coordinator) p += 45;           // keep coordinator free to coordinate when possible
+  if (t.type === 'em' && d.tier === 'second') p += t.priority === 1 ? 10 : 40; // first on-call attends calls first
+  if (t.type !== 'list' && d.listPrep && t.priority >= 3) p += 10;
+  return p;
+}
+function load_(d) { return S.tasks.filter(t => t.doctorId === d.id && t.status !== 'done').reduce((a, t) => a + t.duration, 0); }
+
+function autoSchedule() {
+  const L = shiftLen();
+  for (const t of S.tasks) {
+    if (t.status !== 'pending') continue;
+    if (!t.fixDoctor) t.doctorId = null;
+    if (!t.fixStart) t.start = null;
+    if (t.type === 'ot' && t.theatreAuto) { t.theatre = ''; t.theatreAuto = false; }
+  }
+  const queue = S.tasks.filter(t => t.status === 'pending' && t.start == null)
+    .sort((a, b) => a.priority - b.priority || rel(a.earliest) - rel(b.earliest) || a.seq - b.seq);
+  for (const t of queue) {
+    const cands = t.fixDoctor && doc(t.doctorId) ? [doc(t.doctorId)] : eligible(t);
+    const theatres = t.type === 'ot' ? (t.theatre ? [t.theatre] : (S.shift.theatres.length ? S.shift.theatres : [''])) : [null];
+    const earliest = Math.min(rel(t.earliest), L - 1);
+    let best = null;
+    for (const d of cands) {
+      const dBusy = busyOf(x => x.doctorId === d.id);
+      for (const th of theatres) {
+        const tBusy = th ? busyOf(x => x.type === 'ot' && x.theatre === th) : [];
+        const slot = findSlot([dBusy, tBusy], earliest, t.duration);
+        const score = slot + penalty(d, t) + load_(d) / 1000;
+        if (!best || score < best.score) best = { score, slot, d, th };
+      }
+    }
+    if (best) {
+      t.doctorId = best.d.id; t.start = best.slot;
+      if (t.type === 'ot' && !t.theatre && best.th) { t.theatre = best.th; t.theatreAuto = true; }
+    }
+  }
+}
+
+/* ---------- derived ---------- */
+function stats() {
+  const open = S.tasks.filter(t => t.status !== 'done');
+  return {
+    open: open.length,
+    unassigned: open.filter(t => !t.doctorId).length,
+    active: S.tasks.filter(t => t.status === 'active').length,
+    p1: open.filter(t => t.priority === 1).length,
+    late: open.filter(t => t.start != null && t.start + t.duration > shiftLen()).length,
+  };
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function tierLabel(d) { return d.tier === 'second' ? '2nd on-call' : '1st on-call'; }
+
+/* ---------- render ---------- */
+const $main = document.getElementById('main');
+const $layer = document.getElementById('layer');
+
+function render() {
+  const sh = S.shift;
+  const dt = new Date(sh.date + 'T00:00');
+  const dateStr = isNaN(dt) ? sh.date : dt.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  document.getElementById('shiftLabel').textContent = `${dateStr} · ${sh.start}–${fmt(shiftLen())} (${sh.hours} h)`;
+  const s = stats();
+  document.getElementById('stats').innerHTML =
+    `<span class="stat"><b>${s.open}</b> open</span>` +
+    `<span class="stat"><b>${s.active}</b> in progress</span>` +
+    `<span class="stat ${s.unassigned ? 'alert' : ''}"><b>${s.unassigned}</b> unassigned</span>` +
+    (s.p1 ? `<span class="stat alert"><b>${s.p1}</b> top priority</span>` : '') +
+    (s.late ? `<span class="stat alert"><b>${s.late}</b> past shift end</span>` : '');
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab)));
+  const views = { board: viewBoard, timeline: viewTimeline, tasks: viewTasks, ot: viewOT, team: viewTeam };
+  $main.innerHTML = (views[ui.tab] || viewBoard)();
+  if (ui.tab === 'timeline') { const w = $main.querySelector('.tl-wrap'); const n = $main.querySelector('.now'); if (w && n && !w.dataset.scrolled) { w.scrollLeft = Math.max(0, n.offsetLeft - 220); w.dataset.scrolled = 1; } }
+}
+
+function addButtons() {
+  return `<div class="row">` + Object.entries(TYPES).map(([k, v]) =>
+    `<button class="btn sm ${v.cls}" data-act="new" data-type="${k}"><span class="dot"></span>${v.short}</button>`).join('') +
+    `<span class="spacer"></span><button class="btn sm" data-act="handover">Handover text</button><button class="btn primary sm" data-act="schedule">Auto-schedule</button></div>`;
+}
+
+function exampleBanner() {
+  if (!S.example) return '';
+  return `<div class="banner"><span>Example shift loaded so you can see how it works. Edit the team under <b>Team &amp; shift</b>, or start blank.</span>
+    <button class="btn sm" data-act="clear-example">Start a blank shift</button></div>`;
+}
+
+function taskItem(t, opts = {}) {
+  const ty = TYPES[t.type]; const d = doc(t.doctorId);
+  const end = t.start != null ? t.start + t.duration : null;
+  const late = end != null && end > shiftLen();
+  const time = t.start != null ? `<span class="num ${late ? 'late' : ''}">${fmt(t.start)}–${fmt(end)}</span>` : `<span class="num">not before ${esc(t.earliest || S.shift.start)}</span>`;
+  const meta = [
+    time,
+    !opts.hideDoc ? (d ? `<span>${esc(d.name)}${t.fixDoctor ? ' (fixed)' : ''}</span>` : `<span class="late">Unassigned</span>`) : '',
+    t.location ? `<span>${esc(t.location)}</span>` : '',
+    t.theatre ? `<span>${esc(t.theatre)}</span>` : '',
+    t.asa ? `<span>ASA ${esc(t.asa)}</span>` : '',
+    `<span class="num">${t.duration} min</span>`,
+  ].filter(Boolean).join('');
+  const stLabel = { pending: 'To do', active: 'In progress', done: 'Done' }[t.status];
+  return `<div class="task ${ty.cls} ${t.status}">
+    <div class="t-main"><div class="t-top"><span class="t-type">${ty.short}</span><span class="pri p${t.priority}">${esc(PRI[t.type][t.priority])}</span></div>
+      <div class="t-title">${esc(t.title || ty.label)}</div><div class="t-meta">${meta}</div>
+      ${t.notes ? `<div class="t-meta">${esc(t.notes)}</div>` : ''}</div>
+    <div class="t-side"><button class="st ${t.status}" data-act="cycle" data-id="${t.id}" title="Change status">${stLabel}</button>
+      <button class="icon-btn" data-act="edit" data-id="${t.id}">Edit</button></div></div>`;
+}
+
+function viewBoard() {
+  const s = stats();
+  const unassigned = S.tasks.filter(t => t.status !== 'done' && !t.doctorId);
+  const coord = S.doctors.find(d => d.coordinator); const lp = S.doctors.filter(d => d.listPrep);
+  let h = exampleBanner() + addButtons();
+  h += `<div class="banner"><span><b>Coordinator:</b> ${coord ? esc(coord.name) + (coord.ext ? ` · ext <span class="num">${esc(coord.ext)}</span>` : '') : '<span class="late">not set</span>'}</span>
+    <span><b>List prep:</b> ${lp.length ? lp.map(d => esc(d.name) + ` (${d.tier === 'second' ? '2nd' : '1st'})`).join(', ') : '<span class="late">not set</span>'}</span></div>`;
+  if (unassigned.length) {
+    h += `<section class="queue has"><div class="row"><h2>Waiting for a doctor · ${unassigned.length}</h2><span class="spacer"></span><button class="btn sm primary" data-act="schedule">Assign now</button></div>
+      <div class="tasks">${unassigned.sort((a, b) => a.priority - b.priority).map(t => taskItem(t)).join('')}</div></section>`;
+  }
+  const groups = [['second', 'Second on-call · OT'], ['first', 'First on-call · APS, emergencies, preop']];
+  for (const [tier, title] of groups) {
+    const ds = S.doctors.filter(d => d.tier === tier);
+    h += `<section style="display:grid;gap:10px"><h2>${title}</h2>`;
+    if (!ds.length) { h += `<p class="empty">No ${tier === 'second' ? 'second' : 'first'} on-call doctors added yet. Add them under Team &amp; shift.</p>`; }
+    h += `<div class="docs">` + ds.map(docCard).join('') + `</div></section>`;
+  }
+  return h;
+}
+
+function docCard(d) {
+  const mine = S.tasks.filter(t => t.doctorId === d.id).sort((a, b) => (a.status === 'done') - (b.status === 'done') || (a.start ?? 1e9) - (b.start ?? 1e9));
+  const open = mine.filter(t => t.status !== 'done');
+  const L = shiftLen();
+  const byType = Object.keys(TYPES).map(k => [k, open.filter(t => t.type === k).reduce((a, t) => a + t.duration, 0)]).filter(x => x[1]);
+  const total = byType.reduce((a, x) => a + x[1], 0);
+  const bar = byType.map(([k, m]) => `<span class="${TYPES[k].cls}" style="width:${Math.min(100, m / L * 100 * 2.5)}%"></span>`).join('');
+  const shown = open.slice(0, 4);
+  return `<article class="doc ${d.status === 'off' ? 'off' : ''}">
+    <div class="doc-h"><div style="min-width:0"><div class="doc-name">${esc(d.name)}</div>
+      <div class="chips"><span class="chip ${d.tier === 'second' ? 'tier2' : 'tier1'}">${tierLabel(d)}</span>${d.coordinator ? '<span class="chip coord">Coordinator</span>' : ''}${d.listPrep ? '<span class="chip lp">List prep</span>' : ''}${d.ext ? `<span class="chip num">ext ${esc(d.ext)}</span>` : ''}</div></div>
+      <select class="status" data-act="docstatus" data-id="${d.id}" aria-label="Status of ${esc(d.name)}">${Object.entries(DOC_STATUS).map(([k, v]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+    <div><div class="load">${bar}</div><div class="load-l"><span>${open.length} open task${open.length === 1 ? '' : 's'}</span><span class="num">${Math.floor(total / 60)} h ${total % 60} min booked</span></div></div>
+    <div class="tasks">${shown.length ? shown.map(t => taskItem(t, { hideDoc: true })).join('') : '<p class="empty">Nothing assigned. Free for the next call.</p>'}
+    ${open.length > shown.length ? `<p class="empty">+ ${open.length - shown.length} more in Schedule</p>` : ''}</div></article>`;
+}
+
+function viewTimeline() {
+  const L = shiftLen(); const hw = 84; const W = L / 60 * hw;
+  const px = m => m / 60 * hw;
+  let h = addButtons();
+  h += `<div class="legend">${Object.entries(TYPES).map(([k, v]) => `<span class="${v.cls}"><i class="dot"></i>${v.label}</span>`).join('')}<span>Colours follow anaesthetic syringe labels</span></div>`;
+  const hours = Array.from({ length: S.shift.hours }, (_, i) => `<div class="tl-hour" style="left:${px(i * 60)}px">${fmt(i * 60)}</div>`).join('');
+  const nr = nowRel(); const nowLine = nr < L ? `<div class="now" style="left:${px(nr)}px" title="Now"></div>` : '';
+  const block = t => {
+    const ty = TYPES[t.type]; const s = Math.max(0, t.start); const e = Math.min(L, t.start + t.duration);
+    if (e <= 0 || s >= L) return '';
+    return `<button class="blk ${ty.cls} ${t.status}" style="left:${px(s)}px;width:${Math.max(px(e - s) - 2, 18)}px" data-act="edit" data-id="${t.id}" title="${esc(t.title)} ${fmt(t.start)}–${fmt(t.start + t.duration)}"><b>${esc(t.title || ty.label)}</b><span>${fmt(t.start)} ${t.theatre ? esc(t.theatre) : ''}</span></button>`;
+  };
+  const rows = [];
+  rows.push(`<div class="tl-row tl-head" style="min-height:40px"><div class="tl-lab">Doctor</div><div class="tl-track" style="width:${W}px">${hours}</div></div>`);
+  for (const d of S.doctors) {
+    const ts = S.tasks.filter(t => t.doctorId === d.id && t.start != null);
+    rows.push(`<div class="tl-row"><div class="tl-lab"><b>${esc(d.name)}</b><span>${d.tier === 'second' ? '2nd' : '1st'}${d.coordinator ? ' · coord' : ''}${d.listPrep ? ' · list' : ''}</span></div><div class="tl-track" style="width:${W}px">${ts.map(block).join('')}${nowLine}</div></div>`);
+  }
+  const ths = S.shift.theatres;
+  if (ths.length) {
+    rows.push(`<div class="tl-row tl-head" style="min-height:28px"><div class="tl-lab">Theatres</div><div class="tl-track" style="width:${W}px"></div></div>`);
+    for (const th of ths) {
+      const ts = S.tasks.filter(t => t.type === 'ot' && t.theatre === th && t.start != null);
+      rows.push(`<div class="tl-row"><div class="tl-lab"><b>${esc(th)}</b><span>${ts.filter(t => t.status !== 'done').length} case(s)</span></div><div class="tl-track" style="width:${W}px">${ts.map(block).join('')}${nowLine}</div></div>`);
+    }
+  }
+  h += `<div class="tl-wrap"><div class="tl" style="--hw:${hw}px">${rows.join('')}</div></div>`;
+  h += `<p class="empty">Tap a block to edit, change the doctor or fix a start time. Auto-schedule keeps fixed tasks and anything in progress or done where it is.</p>`;
+  return h;
+}
+
+function viewTasks() {
+  const f = ui.filter;
+  let list = S.tasks.filter(t => (f === 'all' || t.type === f) && (ui.showDone || t.status !== 'done'));
+  list.sort((a, b) => (a.status === 'done') - (b.status === 'done') || (a.start ?? 1e9) - (b.start ?? 1e9) || a.priority - b.priority);
+  let h = addButtons();
+  h += `<div class="row"><div class="seg">` +
+    [['all', 'All', '']].concat(Object.entries(TYPES).map(([k, v]) => [k, v.short, v.cls])).map(([k, l, c]) =>
+      `<button class="${c}" aria-pressed="${f === k}" data-act="filter" data-f="${k}">${c ? '<i class="dot"></i>' : ''}${l} <span class="num">${S.tasks.filter(t => (k === 'all' || t.type === k) && t.status !== 'done').length}</span></button>`).join('') +
+    `</div><span class="spacer"></span><label class="row" style="gap:6px;font-size:13px"><input type="checkbox" id="showDone" data-act="showdone" ${ui.showDone ? 'checked' : ''}> Show done</label></div>`;
+  h += `<div class="tasks">${list.length ? list.map(t => taskItem(t)).join('') : '<p class="empty">No tasks here yet. Use the buttons above to add one.</p>'}</div>`;
+  return h;
+}
+
+function viewOT() {
+  const lp = S.doctors.filter(d => d.listPrep).map(d => d.name).join(', ') || 'not set';
+  const cases = S.tasks.filter(t => t.type === 'ot');
+  let h = `<div class="row"><button class="btn sm t-ot" data-act="new" data-type="ot"><span class="dot"></span>Add OT case</button><span class="spacer"></span><button class="btn sm" data-act="otlist">Copy OT list</button><button class="btn primary sm" data-act="schedule">Auto-schedule</button></div>`;
+  h += `<div class="banner"><span>List prepared by <b>${esc(lp)}</b>. Cases run in priority order (NCEPOD), then by the order below. Move a case up or down to change who goes first within the same priority.</span></div>`;
+  const ths = [...S.shift.theatres, ''];
+  for (const th of ths) {
+    const cs = cases.filter(t => (t.theatre || '') === th).sort((a, b) => (a.start ?? 1e9) - (b.start ?? 1e9) || a.seq - b.seq);
+    if (!cs.length && th === '') continue;
+    h += `<section class="panel"><div class="row"><h2>${th ? esc(th) : 'No theatre yet'}</h2><span class="spacer"></span><span class="empty">${cs.filter(c => c.status !== 'done').length} open</span></div>`;
+    h += cs.length ? `<div class="tasks">${cs.map((t, i) => `<div class="row" style="flex-wrap:nowrap;align-items:stretch"><div style="display:flex;flex-direction:column;gap:2px;justify-content:center"><button class="btn sm ghost" data-act="up" data-id="${t.id}" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>▲</button><button class="btn sm ghost" data-act="down" data-id="${t.id}" aria-label="Move down" ${i === cs.length - 1 ? 'disabled' : ''}>▼</button></div><div style="flex:1;min-width:0">${taskItem(t)}</div></div>`).join('')}</div>` : '<p class="empty">No cases booked.</p>';
+    h += `</section>`;
+  }
+  return h;
+}
+
+function viewTeam() {
+  const sh = S.shift;
+  const row = d => `<tr>
+    <td><input type="text" id="dn-${d.id}" value="${esc(d.name)}" data-act="dname" data-id="${d.id}" aria-label="Name"></td>
+    <td><select data-act="dtier" data-id="${d.id}" aria-label="Tier"><option value="second" ${d.tier === 'second' ? 'selected' : ''}>2nd on-call</option><option value="first" ${d.tier === 'first' ? 'selected' : ''}>1st on-call</option></select></td>
+    <td style="text-align:center"><input type="radio" name="coord" data-act="dcoord" data-id="${d.id}" ${d.coordinator ? 'checked' : ''} ${d.tier !== 'second' ? 'disabled title="Coordinator is a second on-call"' : ''} aria-label="Coordinator"></td>
+    <td style="text-align:center"><input type="checkbox" data-act="dlist" data-id="${d.id}" ${d.listPrep ? 'checked' : ''} aria-label="List prep"></td>
+    <td><input type="text" id="de-${d.id}" value="${esc(d.ext)}" data-act="dext" data-id="${d.id}" style="min-width:70px;width:80px" aria-label="Extension / bleep"></td>
+    <td><button class="btn sm danger ghost" data-act="ddel" data-id="${d.id}">Remove</button></td></tr>`;
+  const n2 = S.doctors.filter(d => d.tier === 'second').length, n1 = S.doctors.filter(d => d.tier === 'first').length;
+  let h = exampleBanner();
+  h += `<section class="panel"><h2>Shift</h2><div class="grid2">
+    <label class="f">Date<input type="date" id="sh-date" data-act="shdate" value="${esc(sh.date)}"></label>
+    <label class="f">Starts at<input type="time" id="sh-start" data-act="shstart" value="${esc(sh.start)}"></label>
+    <label class="f">Length<select id="sh-hours" data-act="shhours">${[12, 14, 16, 24].map(x => `<option value="${x}" ${sh.hours === x ? 'selected' : ''}>${x} hours</option>`).join('')}</select></label>
+    <label class="f">Theatres (comma separated)<input type="text" id="sh-th" data-act="shth" value="${esc(sh.theatres.join(', '))}"></label></div></section>`;
+  h += `<section class="panel"><div class="row"><h2>On-call team</h2><span class="spacer"></span><span class="empty">${n2} second · ${n1} first</span></div>
+    <div class="scroll-x"><table class="team-t"><thead><tr><th>Name</th><th>Role</th><th>Coordinator</th><th>List prep</th><th>Ext / bleep</th><th></th></tr></thead><tbody>${S.doctors.map(row).join('')}</tbody></table></div>
+    <div class="row"><button class="btn sm" data-act="dadd" data-tier="second">+ Second on-call</button><button class="btn sm" data-act="dadd" data-tier="first">+ First on-call</button></div>
+    ${(n2 < 2 || n2 > 3 || n1 !== 3) ? `<p class="empty">Usual set-up is 2–3 second on-calls and 3 first on-calls.</p>` : ''}</section>`;
+  h += `<section class="panel"><h2>How auto-schedule assigns work</h2><ul class="rules">
+    <li><b>OT cases</b> go to second on-calls. The coordinator gets cases last so they stay free to coordinate. Each theatre runs one case at a time.</li>
+    <li><b>Emergency calls</b> go to the first on-call who is free soonest. A second on-call is pulled in when that is faster, most readily for top-priority calls.</li>
+    <li><b>APS reviews</b> and <b>preop assessments</b> go to first on-calls.</li>
+    <li><b>List preparation</b> goes to the doctor ticked for list prep (first or second on-call).</li>
+    <li>Higher priority is placed first, then earliest “not before” time. Doctors marked <i>Off / away</i> get nothing; <i>Tied up</i> doctors are used last.</li>
+    <li>Tasks with a fixed doctor or start time, and tasks in progress or done, are never moved.</li></ul></section>`;
+  h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">Everything is saved in this browser only. Use bed and ward rather than patient names or record numbers.</p>
+    <div class="row">${ui.confirmReset ? `<div class="confirm">Delete all tasks and the team on this device? <button class="btn sm danger" data-act="reset-yes">Delete everything</button><button class="btn sm" data-act="reset-no">Keep</button></div>` : `<button class="btn sm" data-act="newshift">New shift (keep team, clear tasks)</button><button class="btn sm danger ghost" data-act="reset">Delete everything</button>`}</div></section>`;
+  return h;
+}
+
+/* ---------- task sheet ---------- */
+let draft = null;
+function openTask(t) {
+  draft = t ? { ...t } : null;
+  renderSheet();
+}
+function newTask(type) {
+  const ty = TYPES[type];
+  const nr = nowRel();
+  openTask(null);
+  draft = { id: uid(), type, title: '', location: '', notes: '', priority: type === 'em' ? 2 : 3, duration: ty.dur,
+    earliest: fmt(nr < shiftLen() ? Math.ceil(nr / 5) * 5 : 0), theatre: '', asa: '', doctorId: null, start: null,
+    fixDoctor: false, fixStart: false, status: 'pending', seq: Math.max(0, ...S.tasks.map(x => x.seq || 0)) + 1, _new: true };
+  renderSheet();
+}
+function renderSheet() {
+  if (!draft) { $layer.innerHTML = ''; return; }
+  const t = draft; const ty = TYPES[t.type];
+  const docOpts = `<option value="">Auto (best fit)</option>` + S.doctors.map(d => `<option value="${d.id}" ${t.fixDoctor && t.doctorId === d.id ? 'selected' : ''}>${esc(d.name)} · ${d.tier === 'second' ? '2nd' : '1st'}${d.status === 'off' ? ' (off)' : ''}</option>`).join('');
+  const thOpts = `<option value="">Auto (first free)</option>` + S.shift.theatres.map(x => `<option ${t.theatre === x && !t.theatreAuto ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  const placeholders = { ot: 'e.g. Lap appendicectomy', em: 'e.g. ED resus – airway', aps: 'e.g. Epidural review', pre: 'e.g. Preop – hip fracture', list: "e.g. Tomorrow's emergency list" };
+  $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="taskForm" autocomplete="off">
+    <div class="row"><h3>${t._new ? 'New task' : 'Edit task'}</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
+    <div class="typepick">${Object.entries(TYPES).map(([k, v]) => `<button type="button" class="${v.cls}" aria-pressed="${t.type === k}" data-act="ftype" data-type="${k}">${v.short}</button>`).join('')}</div>
+    <label class="f">What<input id="f-title" name="title" value="${esc(t.title)}" placeholder="${placeholders[t.type]}" required></label>
+    <div class="grid2">
+      <label class="f">Where (ward / bed)<input id="f-loc" name="location" value="${esc(t.location)}" placeholder="Ward 4B, bed 12"></label>
+      <label class="f">${t.type === 'ot' ? 'NCEPOD category' : 'Priority'}<select id="f-pri" name="priority">${[1, 2, 3, 4].map(p => `<option value="${p}" ${t.priority === p ? 'selected' : ''}>${p} · ${PRI[t.type][p]}</option>`).join('')}</select></label>
+      <label class="f">Expected minutes<input id="f-dur" name="duration" type="number" min="5" step="5" value="${t.duration}"></label>
+      <label class="f">Not before<input id="f-earliest" name="earliest" type="time" value="${esc(t.earliest)}"></label>
+      ${t.type === 'ot' ? `<label class="f">Theatre<select id="f-th" name="theatre">${thOpts}</select></label>` : ''}
+      ${t.type === 'ot' || t.type === 'pre' ? `<label class="f">ASA<input id="f-asa" name="asa" value="${esc(t.asa)}" placeholder="e.g. 3E"></label>` : ''}
+    </div>
+    <div class="grid2">
+      <label class="f">Doctor<select id="f-doc" name="doctor">${docOpts}</select></label>
+      <label class="f">Fixed start (optional)<input id="f-start" name="start" type="time" value="${t.fixStart && t.start != null ? fmt(t.start) : ''}"></label>
+    </div>
+    <label class="f">Notes<textarea id="f-notes" name="notes" placeholder="Airway concerns, anticoagulation, fasting status…">${esc(t.notes)}</textarea></label>
+    <div class="row">${!t._new ? (ui.confirmDel ? `<span class="confirm">Delete this task? <button type="button" class="btn sm danger" data-act="del-yes">Delete</button><button type="button" class="btn sm" data-act="del-no">Keep</button></span>` : `<button type="button" class="btn sm danger ghost" data-act="del">Delete</button>`) : ''}
+      <span class="spacer"></span><button type="button" class="btn" data-act="close">Cancel</button><button type="submit" class="btn primary">${t._new ? 'Add and schedule' : 'Save'}</button></div>
+  </form></div>`;
+  const ti = document.getElementById('f-title'); if (ti && t._new) ti.focus();
+}
+function readForm() {
+  const f = document.getElementById('taskForm'); if (!f) return;
+  const v = n => f.elements[n] ? f.elements[n].value : undefined;
+  draft.title = v('title').trim(); draft.location = v('location').trim(); draft.notes = v('notes').trim();
+  draft.priority = Number(v('priority')) || 3; draft.duration = Math.max(5, Number(v('duration')) || TYPES[draft.type].dur);
+  draft.earliest = v('earliest') || S.shift.start;
+  if (draft.type === 'ot') { const th = v('theatre'); draft.theatre = th || ''; draft.theatreAuto = false; } else { draft.theatre = ''; }
+  if (v('asa') !== undefined) draft.asa = v('asa').trim();
+  const dId = v('doctor'); const st = v('start');
+  draft.fixDoctor = !!dId; if (dId) draft.doctorId = dId;
+  draft.fixStart = !!st && !!dId; if (draft.fixStart) draft.start = rel(st);
+}
+function commitDraft() {
+  readForm();
+  const t = { ...draft }; const isNew = t._new; delete t._new;
+  if (!t.fixDoctor && t.status === 'pending') { t.doctorId = null; t.start = null; }
+  if (t.fixDoctor && !t.fixStart && t.status === 'pending') t.start = null;
+  if (isNew) S.tasks.push(t); else { const i = S.tasks.findIndex(x => x.id === t.id); if (i >= 0) S.tasks[i] = t; }
+  autoSchedule(); save(); draft = null; ui.confirmDel = false; renderSheet(); render();
+  const d = doc(t.doctorId);
+  toast(d ? `${TYPES[t.type].short} → ${d.name} at ${fmt(S.tasks.find(x => x.id === t.id).start)}` : 'Saved – no doctor available');
+}
+
+/* ---------- handover ---------- */
+function handoverText() {
+  const sh = S.shift; const coord = S.doctors.find(d => d.coordinator); const lp = S.doctors.filter(d => d.listPrep);
+  const line = t => `  ${t.start != null ? fmt(t.start) + '–' + fmt(t.start + t.duration) : '--:--'}  ${TYPES[t.type].short}: ${t.title}${t.location ? ' (' + t.location + ')' : ''}${t.theatre ? ' [' + t.theatre + ']' : ''} · ${PRI[t.type][t.priority]}${t.status === 'active' ? ' · IN PROGRESS' : ''}`;
+  let out = `ON-CALL PLAN · ${sh.date} · ${sh.start}–${fmt(shiftLen())}\nCoordinator: ${coord ? coord.name + (coord.ext ? ' (ext ' + coord.ext + ')' : '') : '—'}\nList prep: ${lp.map(d => d.name).join(', ') || '—'}\n`;
+  for (const d of S.doctors) {
+    const ts = S.tasks.filter(t => t.doctorId === d.id && t.status !== 'done').sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
+    out += `\n${d.name} – ${tierLabel(d)}${d.coordinator ? ', coordinator' : ''}${d.ext ? ' – ext ' + d.ext : ''}${d.status !== 'available' ? ' – ' + DOC_STATUS[d.status] : ''}\n`;
+    out += ts.length ? ts.map(line).join('\n') + '\n' : '  (free)\n';
+  }
+  const un = S.tasks.filter(t => !t.doctorId && t.status !== 'done');
+  if (un.length) out += `\nUNASSIGNED\n` + un.map(line).join('\n') + '\n';
+  const done = S.tasks.filter(t => t.status === 'done').length;
+  out += `\nCompleted this shift: ${done}`;
+  return out;
+}
+function otListText() {
+  let out = `OT LIST · ${S.shift.date}\n`;
+  for (const th of S.shift.theatres) {
+    const cs = S.tasks.filter(t => t.type === 'ot' && t.theatre === th && t.status !== 'done').sort((a, b) => (a.start ?? 1e9) - (b.start ?? 1e9));
+    if (!cs.length) continue;
+    out += `\n${th}\n` + cs.map((t, i) => `  ${i + 1}. ${t.start != null ? fmt(t.start) : '--:--'}  ${t.title}${t.location ? ' – ' + t.location : ''} · NCEPOD ${PRI.ot[t.priority]}${t.asa ? ' · ASA ' + t.asa : ''} · ${doc(t.doctorId)?.name || 'unassigned'}`).join('\n') + '\n';
+  }
+  return out;
+}
+function showText(title, text) {
+  $layer.innerHTML = `<div class="overlay" data-act="close-bg"><div class="sheet"><div class="row"><h3>${esc(title)}</h3><span class="spacer"></span><button class="btn sm ghost" data-act="close">Close</button></div>
+    <pre class="handover" id="htext" tabindex="0">${esc(text)}</pre><div class="row"><span class="empty">Paste into the team group chat.</span><span class="spacer"></span><button class="btn primary" data-act="copy">Copy text</button></div></div></div>`;
+}
+
+/* ---------- events ---------- */
+let toastT;
+function toast(msg) { clearTimeout(toastT); let el = document.querySelector('.toast'); if (!el) { el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); } el.textContent = msg; el.hidden = false; toastT = setTimeout(() => el.hidden = true, 2600); }
+function commit() { save(); render(); }
+
+document.getElementById('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button[data-tab]'); if (!b) return;
+  ui.tab = b.dataset.tab; ui.confirmReset = false; writePref('tab', ui.tab); render(); window.scrollTo(0, 0);
+});
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const a = el.dataset.act; const id = el.dataset.id;
+  if (a === 'close-bg' && e.target !== el) return;
+  const t = id ? S.tasks.find(x => x.id === id) : null;
+  switch (a) {
+    case 'new': newTask(el.dataset.type); break;
+    case 'edit': ui.confirmDel = false; openTask(t); break;
+    case 'close': case 'close-bg': draft = null; ui.confirmDel = false; $layer.innerHTML = ''; break;
+    case 'ftype': readForm(); draft.type = el.dataset.type; draft.duration = draft._new ? TYPES[draft.type].dur : draft.duration; renderSheet(); break;
+    case 'del': readForm(); ui.confirmDel = true; renderSheet(); break;
+    case 'del-no': readForm(); ui.confirmDel = false; renderSheet(); break;
+    case 'del-yes': S.tasks = S.tasks.filter(x => x.id !== draft.id); draft = null; ui.confirmDel = false; $layer.innerHTML = ''; autoSchedule(); commit(); toast('Task deleted'); break;
+    case 'cycle': {
+      if (t.status === 'pending' && !t.doctorId) autoSchedule();
+      t.status = { pending: 'active', active: 'done', done: 'pending' }[t.status];
+      if (t.status === 'active') { const nr = nowRel(); if (nr < shiftLen() && (t.start == null || Math.abs(nr - t.start) > 5)) t.start = nr; }
+      if (t.status === 'pending') autoSchedule();
+      commit(); break;
+    }
+    case 'schedule': autoSchedule(); commit(); { const s = stats(); toast(s.unassigned ? `${s.unassigned} task(s) could not be placed` : 'Schedule updated'); } break;
+    case 'handover': showText('Handover / team update', handoverText()); break;
+    case 'otlist': showText('OT list', otListText()); break;
+    case 'copy': {
+      const pre = document.getElementById('htext'); const txt = pre.textContent;
+      const fallback = () => { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast('Text selected – copy it with your device'); };
+      try { navigator.clipboard.writeText(txt).then(() => toast('Copied'), fallback); } catch (err) { fallback(); }
+      break;
+    }
+    case 'filter': ui.filter = el.dataset.f; render(); break;
+    case 'up': case 'down': {
+      const th = t.theatre || '';
+      const cs = S.tasks.filter(x => x.type === 'ot' && (x.theatre || '') === th).sort((p, q) => (p.start ?? 1e9) - (q.start ?? 1e9) || p.seq - q.seq);
+      const i = cs.indexOf(t); const j = a === 'up' ? i - 1 : i + 1; if (j < 0 || j >= cs.length) break;
+      const o = cs[j];
+      // swap order; equalise priority so the swap holds under NCEPOD ordering only when categories match
+      [t.seq, o.seq] = [o.seq, t.seq];
+      if (t.seq === o.seq) { a === 'up' ? t.seq-- : t.seq++; }
+      if (t.priority !== o.priority) toast('Different NCEPOD category – higher priority still goes first');
+      for (const x of [t, o]) if (x.status === 'pending' && !x.fixStart) { x.start = null; }
+      // keep both in this theatre while reordering
+      for (const x of [t, o]) if (x.theatreAuto) x.theatreAuto = false;
+      autoSchedule(); commit(); break;
+    }
+    case 'clear-example': S.example = false; S.tasks = []; S.doctors = [
+      { id: uid(), name: 'Second on-call 1', tier: 'second', coordinator: true, listPrep: false, ext: '', status: 'available' },
+      { id: uid(), name: 'Second on-call 2', tier: 'second', coordinator: false, listPrep: false, ext: '', status: 'available' },
+      { id: uid(), name: 'First on-call 1', tier: 'first', coordinator: false, listPrep: true, ext: '', status: 'available' },
+      { id: uid(), name: 'First on-call 2', tier: 'first', coordinator: false, listPrep: false, ext: '', status: 'available' },
+      { id: uid(), name: 'First on-call 3', tier: 'first', coordinator: false, listPrep: false, ext: '', status: 'available' }];
+      S.shift.date = todayISO(); ui.tab = 'team'; writePref('tab', 'team'); commit(); toast('Blank shift – add your team names'); break;
+    case 'dadd': S.doctors.push({ id: uid(), name: el.dataset.tier === 'second' ? 'New 2nd on-call' : 'New 1st on-call', tier: el.dataset.tier, coordinator: false, listPrep: false, ext: '', status: 'available' }); commit(); break;
+    case 'ddel': S.doctors = S.doctors.filter(d => d.id !== id); S.tasks.forEach(x => { if (x.doctorId === id) { x.doctorId = null; x.fixDoctor = false; x.fixStart = false; if (x.status === 'pending') x.start = null; } }); autoSchedule(); commit(); break;
+    case 'newshift': S.tasks = []; S.example = false; S.shift.date = todayISO(); S.doctors.forEach(d => d.status = 'available'); commit(); toast('New shift started'); break;
+    case 'reset': ui.confirmReset = true; render(); break;
+    case 'reset-no': ui.confirmReset = false; render(); break;
+    case 'reset-yes': S = { example: false, shift: { date: todayISO(), start: '08:00', hours: 24, theatres: ['Main OT 1', 'Main OT 2', 'Emergency OT'] }, doctors: [], tasks: [] }; ui.confirmReset = false; commit(); toast('All data deleted'); break;
+  }
+});
+
+document.addEventListener('change', e => {
+  const el = e.target; const a = el.dataset.act; if (!a) return;
+  const d = el.dataset.id ? doc(el.dataset.id) : null;
+  switch (a) {
+    case 'docstatus': d.status = el.value; autoSchedule(); commit(); toast(`${d.name}: ${DOC_STATUS[d.status]} – schedule updated`); break;
+    case 'showdone': ui.showDone = el.checked; render(); break;
+    case 'dname': d.name = el.value.trim() || d.name; S.example = false; commit(); break;
+    case 'dext': d.ext = el.value.trim(); commit(); break;
+    case 'dtier': d.tier = el.value; if (d.tier !== 'second') d.coordinator = false; autoSchedule(); commit(); break;
+    case 'dcoord': S.doctors.forEach(x => x.coordinator = x.id === d.id); autoSchedule(); commit(); break;
+    case 'dlist': d.listPrep = el.checked; autoSchedule(); commit(); break;
+    case 'shdate': S.shift.date = el.value || todayISO(); commit(); break;
+    case 'shstart': {
+      const old = startAbs(); S.shift.start = el.value || '08:00'; const diff = startAbs() - old;
+      // keep fixed/active blocks at the same clock time
+      S.tasks.forEach(t => { if (t.start != null) { t.start -= diff; if (t.start < 0) t.start += 1440; } });
+      autoSchedule(); commit(); break;
+    }
+    case 'shhours': S.shift.hours = Number(el.value) || 24; autoSchedule(); commit(); break;
+    case 'shth': S.shift.theatres = el.value.split(',').map(x => x.trim()).filter(Boolean); autoSchedule(); commit(); break;
+  }
+});
+
+document.addEventListener('submit', e => { if (e.target.id === 'taskForm') { e.preventDefault(); commitDraft(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $layer.innerHTML) { draft = null; $layer.innerHTML = ''; } });
+setInterval(() => { if (ui.tab === 'timeline' && !draft) { const n = $main.querySelectorAll('.now'); const L = shiftLen(); const nr = nowRel(); n.forEach(x => x.style.left = (nr / 60 * 84) + 'px'); if (nr >= L) n.forEach(x => x.hidden = true); } }, 60000);
+
+if (S.example) save();
+render();
+})();
+</script>
