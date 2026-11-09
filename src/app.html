@@ -437,7 +437,7 @@ function buildDoctors(teamId, session) {
   let ds = tm.members.map(m => { const sf = staffOf(m.staffId); if (!sf) return null;
     const duty = sf.tier === 'first' ? (m.duty || ((m.obs ?? sf.obs) ? 'obs' : '')) : '';
     return { id: sf.id, name: sf.name, tier: sf.tier, duty, obs: duty === 'obs', thirdRole: sf.tier === 'third' ? (m.thirdRole || '') : '', coordinator: !!m.coordinator && sf.tier === 'second', listPrep: !!m.listPrep, ext: sf.ext || '', status: 'available' }; }).filter(Boolean);
-  if (session === 'am') { ds = ds.filter(d => d.tier === 'first' || d.tier === 'trainee').map(d => Object.assign(d, { coordinator: false, listPrep: false })); autoDuties(ds); }
+  if (session === 'am') { ds = ds.filter(d => (d.tier === 'first' && !(d.listPrep && !d.duty)) || d.tier === 'trainee').map(d => Object.assign(d, { coordinator: false, listPrep: false })); autoDuties(ds); }
   return ds;
 }
 // spread the four morning duties over the first on-calls who are available
