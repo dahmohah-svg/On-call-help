@@ -38,6 +38,7 @@
   --c-aps: #1f6fc7;      /* blue – opioids */
   --c-pre: #d8a800;      /* yellow – induction agents */
   --c-list: #858b92;     /* grey – local anaesthetics */
+  --c-obs: #d9654a;      /* salmon – antiemetics */
   --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --f-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -47,14 +48,14 @@
   :root:not([data-theme="light"]) {
     --bg: #0f1514; --surface: #172120; --surface-2: #1f2b29; --fg: #e4ece9; --muted: #93a49e; --line: #2c3a37;
     --accent: #4fc0a0; --accent-fg: #06201a; --warn: #f0a24a; --crit: #ff6b6b; --ok: #6cc070;
-    --c-ot: #b98ae0; --c-em: #ff5a5f; --c-aps: #6fb0ff; --c-pre: #f2cd3c; --c-list: #a6acb3;
+    --c-ot: #b98ae0; --c-em: #ff5a5f; --c-aps: #6fb0ff; --c-pre: #f2cd3c; --c-list: #a6acb3; --c-obs: #ff9b80;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f1514; --surface: #172120; --surface-2: #1f2b29; --fg: #e4ece9; --muted: #93a49e; --line: #2c3a37;
   --accent: #4fc0a0; --accent-fg: #06201a; --warn: #f0a24a; --crit: #ff6b6b; --ok: #6cc070;
-  --c-ot: #b98ae0; --c-em: #ff5a5f; --c-aps: #6fb0ff; --c-pre: #f2cd3c; --c-list: #a6acb3;
+  --c-ot: #b98ae0; --c-em: #ff5a5f; --c-aps: #6fb0ff; --c-pre: #f2cd3c; --c-list: #a6acb3; --c-obs: #ff9b80;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -94,7 +95,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 15px; text-tran
 .btn.sm { padding: 4px 9px; font-size: 13px; }
 .btn .dot, .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
 
-.t-ot { --c: var(--c-ot); } .t-em { --c: var(--c-em); } .t-aps { --c: var(--c-aps); } .t-pre { --c: var(--c-pre); } .t-list { --c: var(--c-list); }
+.t-ot { --c: var(--c-ot); } .t-em { --c: var(--c-em); } .t-aps { --c: var(--c-aps); } .t-pre { --c: var(--c-pre); } .t-list { --c: var(--c-list); } .t-obs { --c: var(--c-obs); }
 .dot { background: var(--c); }
 
 .banner { border: 1px dashed var(--line); border-radius: var(--r); padding: 10px 14px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
@@ -112,6 +113,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 15px; text-tran
 .chip.tier2 { background: color-mix(in srgb, var(--c-ot) 16%, transparent); color: var(--c-ot); }
 .chip.tier1 { background: color-mix(in srgb, var(--c-aps) 16%, transparent); color: var(--c-aps); }
 .chip.coord { background: var(--accent); color: var(--accent-fg); }
+.chip.obs { background: color-mix(in srgb, var(--c-obs) 18%, transparent); color: var(--c-obs); }
 .chip.lp { background: color-mix(in srgb, var(--c-list) 22%, transparent); color: var(--fg); }
 select.status { border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; padding: 3px 6px; font-size: 13px; margin-left: auto; }
 .load { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; display: flex; }
@@ -226,6 +228,7 @@ const TYPES = {
   em:   { label: 'Emergency call', short: 'Emergency', cls: 't-em',   dur: 30 },
   aps:  { label: 'APS review',     short: 'APS',       cls: 't-aps',  dur: 20 },
   pre:  { label: 'Preop assessment', short: 'Preop',   cls: 't-pre',  dur: 25 },
+  obs:  { label: 'Obs & Gyne',     short: 'Obs/Gyne',  cls: 't-obs',  dur: 45 },
   list: { label: 'List preparation', short: 'List prep', cls: 't-list', dur: 30 },
 };
 const PRI = {
@@ -233,6 +236,7 @@ const PRI = {
   em:   ['', 'Crash / now', 'Within 15 min', 'Within 1 h', 'When free'],
   aps:  ['', 'Urgent', 'Soon', 'Routine round', 'Routine'],
   pre:  ['', 'Urgent', 'Today', 'Before list', 'Elective'],
+  obs:  ['', 'Cat 1 · now', 'Cat 2 · urgent', 'Cat 3 · soon', 'Cat 4 · elective'],
   list: ['', 'Urgent', 'Soon', 'Before handover', 'Routine'],
 };
 const DOC_STATUS = { available: 'Available', busy: 'Tied up', off: 'Off / away' };
@@ -252,7 +256,7 @@ function writePref(k, v) { try { localStorage.setItem('oncall-pref-' + k, v); } 
 function todayISO() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
 function example() {
-  const d = (name, tier, extra = {}) => ({ id: uid(), name, tier, coordinator: false, listPrep: false, ext: '', status: 'available', ...extra });
+  const d = (name, tier, extra = {}) => ({ id: uid(), name, tier, coordinator: false, listPrep: false, obs: false, ext: '', status: 'available', ...extra });
   const doctors = [
     d('Dr Huda', 'second', { coordinator: true, ext: '4410' }),
     d('Dr Omar', 'second', { ext: '4411' }),
@@ -260,12 +264,15 @@ function example() {
     d('Dr Yusuf', 'first', { listPrep: true, ext: '4420' }),
     d('Dr Mariam', 'first', { ext: '4421' }),
     d('Dr Khalid', 'first', { ext: '4422' }),
+    d('Dr Noor', 'first', { obs: true, ext: '4430' }),
   ];
   const t = (type, title, location, priority, duration, earliest, extra = {}) => ({
     id: uid(), type, title, location, notes: '', priority, duration, earliest, theatre: '', asa: '',
     doctorId: null, start: null, fixDoctor: false, fixStart: false, status: 'pending', seq: 0, ...extra });
   const tasks = [
-    t('ot', 'LSCS – Cat 2', 'Labour ward, room 3', 1, 60, '08:30', { theatre: 'Obstetric OT', asa: '2' }),
+    t('obs', 'LSCS – Cat 2, spinal', 'Labour ward, room 3', 2, 60, '08:30', { theatre: 'Obstetric OT', asa: '2' }),
+    t('obs', 'Labour epidural', 'Labour ward, room 5', 2, 30, '10:00'),
+    t('obs', 'Evacuation of retained products', 'Gynae ward, bed 2', 3, 40, '14:00', { theatre: 'Obstetric OT', asa: '1' }),
     t('ot', 'Emergency laparotomy – perforated DU', 'Ward 4B, bed 12', 2, 120, '09:00', { asa: '3E' }),
     t('ot', 'Lap appendicectomy', 'Surgical ward, bed 7', 2, 75, '09:30', { asa: '1E' }),
     t('ot', 'ORIF fractured neck of femur', 'Ortho ward, bed 3', 3, 150, '10:00', { asa: '3' }),
@@ -303,23 +310,29 @@ function findSlot(lists, earliest, dur) {
 function eligible(t) {
   const avail = S.doctors.filter(d => d.status !== 'off');
   const by = tier => avail.filter(d => d.tier === tier);
+  const gen = avail.filter(d => !d.obs);                   // obs & gyne on-call stays on labour ward
+  const genBy = tier => gen.filter(d => d.tier === tier);
   let c;
-  if (t.type === 'ot') c = by('second');
-  else if (t.type === 'em') c = avail;
+  if (t.type === 'obs') c = avail.filter(d => d.obs || d.tier === 'second');
+  else if (t.type === 'ot') c = genBy('second');
+  else if (t.type === 'em') c = gen;
   else if (t.type === 'list') c = avail.filter(d => d.listPrep);
-  else c = by('first');
-  if (!c.length) c = t.type === 'list' ? by('first') : avail;
+  else c = genBy('first');
+  if (!c.length) c = t.type === 'list' ? genBy('first') : gen;
   if (!c.length) c = avail;
   return c;
 }
 function penalty(d, t) {
   let p = 0;
   if (d.status === 'busy') p += 30;
-  if (t.type === 'ot' && d.coordinator) p += 45;           // keep coordinator free to coordinate when possible
+  if (t.type === 'obs' && !d.obs) p += t.priority === 1 ? 15 : 90;   // second on-call covers obs only when needed
+  if ((t.type === 'ot' || t.type === 'obs') && d.coordinator) p += 45;           // keep coordinator free to coordinate when possible
   if (t.type === 'em' && d.tier === 'second') p += t.priority === 1 ? 10 : 40; // first on-call attends calls first
   if (t.type !== 'list' && d.listPrep && t.priority >= 3) p += 10;
   return p;
 }
+function inTheatre(x) { return (x.type === 'ot' || x.type === 'obs') && !!x.theatre; }
+function theatreCase(x) { return x.type === 'ot' || (x.type === 'obs' && !!x.theatre); }
 function load_(d) { return S.tasks.filter(t => t.doctorId === d.id && t.status !== 'done').reduce((a, t) => a + t.duration, 0); }
 
 function autoSchedule() {
@@ -334,13 +347,13 @@ function autoSchedule() {
     .sort((a, b) => a.priority - b.priority || rel(a.earliest) - rel(b.earliest) || a.seq - b.seq);
   for (const t of queue) {
     const cands = t.fixDoctor && doc(t.doctorId) ? [doc(t.doctorId)] : eligible(t);
-    const theatres = t.type === 'ot' ? (t.theatre ? [t.theatre] : (S.shift.theatres.length ? S.shift.theatres : [''])) : [null];
+    const theatres = t.type === 'ot' ? (t.theatre ? [t.theatre] : (S.shift.theatres.length ? S.shift.theatres : [''])) : (t.type === 'obs' && t.theatre ? [t.theatre] : [null]);
     const earliest = Math.min(rel(t.earliest), L - 1);
     let best = null;
     for (const d of cands) {
       const dBusy = busyOf(x => x.doctorId === d.id);
       for (const th of theatres) {
-        const tBusy = th ? busyOf(x => x.type === 'ot' && x.theatre === th) : [];
+        const tBusy = th ? busyOf(x => inTheatre(x) && x.theatre === th) : [];
         const slot = findSlot([dBusy, tBusy], earliest, t.duration);
         const score = slot + penalty(d, t) + load_(d) / 1000;
         if (!best || score < best.score) best = { score, slot, d, th };
@@ -365,7 +378,7 @@ function stats() {
   };
 }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-function tierLabel(d) { return d.tier === 'second' ? '2nd on-call' : '1st on-call'; }
+function tierLabel(d) { return d.tier === 'second' ? '2nd on-call' : d.obs ? '1st on-call · Obs & Gyne' : '1st on-call'; }
 
 /* ---------- render ---------- */
 const $main = document.getElementById('main');
@@ -434,11 +447,11 @@ function viewBoard() {
     h += `<section class="queue has"><div class="row"><h2>Waiting for a doctor · ${unassigned.length}</h2><span class="spacer"></span><button class="btn sm primary" data-act="schedule">Assign now</button></div>
       <div class="tasks">${unassigned.sort((a, b) => a.priority - b.priority).map(t => taskItem(t)).join('')}</div></section>`;
   }
-  const groups = [['second', 'Second on-call · OT'], ['first', 'First on-call · APS, emergencies, preop']];
-  for (const [tier, title] of groups) {
-    const ds = S.doctors.filter(d => d.tier === tier);
+  const groups = [['second', 'Second on-call · OT', d => d.tier === 'second'], ['first', 'First on-call · APS, emergencies, preop', d => d.tier === 'first' && !d.obs], ['obs', 'First on-call · Obs & Gyne', d => d.obs]];
+  for (const [tier, title, fl] of groups) {
+    const ds = S.doctors.filter(fl);
     h += `<section style="display:grid;gap:10px"><h2>${title}</h2>`;
-    if (!ds.length) { h += `<p class="empty">No ${tier === 'second' ? 'second' : 'first'} on-call doctors added yet. Add them under Team &amp; shift.</p>`; }
+    if (!ds.length) { h += `<p class="empty">No ${{ second: 'second on-call', first: 'first on-call', obs: 'Obs &amp; Gyne on-call' }[tier]} doctor added yet. Add one under Team &amp; shift.</p>`; }
     h += `<div class="docs">` + ds.map(docCard).join('') + `</div></section>`;
   }
   return h;
@@ -454,7 +467,7 @@ function docCard(d) {
   const shown = open.slice(0, 4);
   return `<article class="doc ${d.status === 'off' ? 'off' : ''}">
     <div class="doc-h"><div style="min-width:0"><div class="doc-name">${esc(d.name)}</div>
-      <div class="chips"><span class="chip ${d.tier === 'second' ? 'tier2' : 'tier1'}">${tierLabel(d)}</span>${d.coordinator ? '<span class="chip coord">Coordinator</span>' : ''}${d.listPrep ? '<span class="chip lp">List prep</span>' : ''}${d.ext ? `<span class="chip num">ext ${esc(d.ext)}</span>` : ''}</div></div>
+      <div class="chips"><span class="chip ${d.tier === 'second' ? 'tier2' : 'tier1'}">${d.tier === 'second' ? '2nd on-call' : '1st on-call'}</span>${d.obs ? '<span class="chip obs">Obs &amp; Gyne</span>' : ''}${d.coordinator ? '<span class="chip coord">Coordinator</span>' : ''}${d.listPrep ? '<span class="chip lp">List prep</span>' : ''}${d.ext ? `<span class="chip num">ext ${esc(d.ext)}</span>` : ''}</div></div>
       <select class="status" data-act="docstatus" data-id="${d.id}" aria-label="Status of ${esc(d.name)}">${Object.entries(DOC_STATUS).map(([k, v]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
     <div><div class="load">${bar}</div><div class="load-l"><span>${open.length} open task${open.length === 1 ? '' : 's'}</span><span class="num">${Math.floor(total / 60)} h ${total % 60} min booked</span></div></div>
     <div class="tasks">${shown.length ? shown.map(t => taskItem(t, { hideDoc: true })).join('') : '<p class="empty">Nothing assigned. Free for the next call.</p>'}
@@ -477,13 +490,13 @@ function viewTimeline() {
   rows.push(`<div class="tl-row tl-head" style="min-height:40px"><div class="tl-lab">Doctor</div><div class="tl-track" style="width:${W}px">${hours}</div></div>`);
   for (const d of S.doctors) {
     const ts = S.tasks.filter(t => t.doctorId === d.id && t.start != null);
-    rows.push(`<div class="tl-row"><div class="tl-lab"><b>${esc(d.name)}</b><span>${d.tier === 'second' ? '2nd' : '1st'}${d.coordinator ? ' · coord' : ''}${d.listPrep ? ' · list' : ''}</span></div><div class="tl-track" style="width:${W}px">${ts.map(block).join('')}${nowLine}</div></div>`);
+    rows.push(`<div class="tl-row"><div class="tl-lab"><b>${esc(d.name)}</b><span>${d.tier === 'second' ? '2nd' : '1st'}${d.obs ? ' · obs' : ''}${d.coordinator ? ' · coord' : ''}${d.listPrep ? ' · list' : ''}</span></div><div class="tl-track" style="width:${W}px">${ts.map(block).join('')}${nowLine}</div></div>`);
   }
   const ths = S.shift.theatres;
   if (ths.length) {
     rows.push(`<div class="tl-row tl-head" style="min-height:28px"><div class="tl-lab">Theatres</div><div class="tl-track" style="width:${W}px"></div></div>`);
     for (const th of ths) {
-      const ts = S.tasks.filter(t => t.type === 'ot' && t.theatre === th && t.start != null);
+      const ts = S.tasks.filter(t => inTheatre(t) && t.theatre === th && t.start != null);
       rows.push(`<div class="tl-row"><div class="tl-lab"><b>${esc(th)}</b><span>${ts.filter(t => t.status !== 'done').length} case(s)</span></div><div class="tl-track" style="width:${W}px">${ts.map(block).join('')}${nowLine}</div></div>`);
     }
   }
@@ -507,9 +520,9 @@ function viewTasks() {
 
 function viewOT() {
   const lp = S.doctors.filter(d => d.listPrep).map(d => d.name).join(', ') || 'not set';
-  const cases = S.tasks.filter(t => t.type === 'ot');
+  const cases = S.tasks.filter(theatreCase);
   let h = `<div class="row"><button class="btn sm t-ot" data-act="new" data-type="ot"><span class="dot"></span>Add OT case</button><span class="spacer"></span><button class="btn sm" data-act="otlist">Copy OT list</button><button class="btn primary sm" data-act="schedule">Auto-schedule</button></div>`;
-  h += `<div class="banner"><span>List prepared by <b>${esc(lp)}</b>. Cases run in priority order (NCEPOD), then by the order below. Move a case up or down to change who goes first within the same priority.</span></div>`;
+  h += `<div class="banner"><span>List prepared by <b>${esc(lp)}</b>. Cases run in priority order (NCEPOD, or LSCS category for obstetric cases), then by the order below. Move a case up or down to change who goes first within the same priority.</span></div>`;
   const ths = [...S.shift.theatres, ''];
   for (const th of ths) {
     const cs = cases.filter(t => (t.theatre || '') === th).sort((a, b) => (a.start ?? 1e9) - (b.start ?? 1e9) || a.seq - b.seq);
@@ -527,24 +540,26 @@ function viewTeam() {
     <td><input type="text" id="dn-${d.id}" value="${esc(d.name)}" data-act="dname" data-id="${d.id}" aria-label="Name"></td>
     <td><select data-act="dtier" data-id="${d.id}" aria-label="Tier"><option value="second" ${d.tier === 'second' ? 'selected' : ''}>2nd on-call</option><option value="first" ${d.tier === 'first' ? 'selected' : ''}>1st on-call</option></select></td>
     <td style="text-align:center"><input type="radio" name="coord" data-act="dcoord" data-id="${d.id}" ${d.coordinator ? 'checked' : ''} ${d.tier !== 'second' ? 'disabled title="Coordinator is a second on-call"' : ''} aria-label="Coordinator"></td>
+    <td style="text-align:center"><input type="checkbox" data-act="dobs" data-id="${d.id}" ${d.obs ? 'checked' : ''} aria-label="Obs and Gyne on-call"></td>
     <td style="text-align:center"><input type="checkbox" data-act="dlist" data-id="${d.id}" ${d.listPrep ? 'checked' : ''} aria-label="List prep"></td>
     <td><input type="text" id="de-${d.id}" value="${esc(d.ext)}" data-act="dext" data-id="${d.id}" style="min-width:70px;width:80px" aria-label="Extension / bleep"></td>
     <td><button class="btn sm danger ghost" data-act="ddel" data-id="${d.id}">Remove</button></td></tr>`;
-  const n2 = S.doctors.filter(d => d.tier === 'second').length, n1 = S.doctors.filter(d => d.tier === 'first').length;
+  const n2 = S.doctors.filter(d => d.tier === 'second').length, n1 = S.doctors.filter(d => d.tier === 'first' && !d.obs).length, nO = S.doctors.filter(d => d.obs).length;
   let h = exampleBanner();
   h += `<section class="panel"><h2>Shift</h2><div class="grid2">
     <label class="f">Date<input type="date" id="sh-date" data-act="shdate" value="${esc(sh.date)}"></label>
     <label class="f">Starts at<input type="time" id="sh-start" data-act="shstart" value="${esc(sh.start)}"></label>
     <label class="f">Length<select id="sh-hours" data-act="shhours">${[12, 14, 16, 24].map(x => `<option value="${x}" ${sh.hours === x ? 'selected' : ''}>${x} hours</option>`).join('')}</select></label>
     <label class="f">Theatres (comma separated)<input type="text" id="sh-th" data-act="shth" value="${esc(sh.theatres.join(', '))}"></label></div></section>`;
-  h += `<section class="panel"><div class="row"><h2>On-call team</h2><span class="spacer"></span><span class="empty">${n2} second · ${n1} first</span></div>
-    <div class="scroll-x"><table class="team-t"><thead><tr><th>Name</th><th>Role</th><th>Coordinator</th><th>List prep</th><th>Ext / bleep</th><th></th></tr></thead><tbody>${S.doctors.map(row).join('')}</tbody></table></div>
-    <div class="row"><button class="btn sm" data-act="dadd" data-tier="second">+ Second on-call</button><button class="btn sm" data-act="dadd" data-tier="first">+ First on-call</button></div>
-    ${(n2 < 2 || n2 > 3 || n1 !== 3) ? `<p class="empty">Usual set-up is 2–3 second on-calls and 3 first on-calls.</p>` : ''}</section>`;
+  h += `<section class="panel"><div class="row"><h2>On-call team</h2><span class="spacer"></span><span class="empty">${n2} second · ${n1} first · ${nO} obs &amp; gyne</span></div>
+    <div class="scroll-x"><table class="team-t"><thead><tr><th>Name</th><th>Role</th><th>Coordinator</th><th>Obs/Gyne</th><th>List prep</th><th>Ext / bleep</th><th></th></tr></thead><tbody>${S.doctors.map(row).join('')}</tbody></table></div>
+    <div class="row"><button class="btn sm" data-act="dadd" data-tier="second">+ Second on-call</button><button class="btn sm" data-act="dadd" data-tier="first">+ First on-call</button><button class="btn sm" data-act="dadd" data-tier="obs">+ Obs &amp; Gyne on-call</button></div>
+    ${(n2 < 2 || n2 > 3 || n1 !== 3 || nO !== 1) ? `<p class="empty">Usual set-up is 2–3 second on-calls, 3 first on-calls and 1 first on-call for Obs &amp; Gyne.</p>` : ''}</section>`;
   h += `<section class="panel"><h2>How auto-schedule assigns work</h2><ul class="rules">
     <li><b>OT cases</b> go to second on-calls. The coordinator gets cases last so they stay free to coordinate. Each theatre runs one case at a time.</li>
     <li><b>Emergency calls</b> go to the first on-call who is free soonest. A second on-call is pulled in when that is faster, most readily for top-priority calls.</li>
     <li><b>APS reviews</b> and <b>preop assessments</b> go to first on-calls.</li>
+    <li><b>Obs &amp; Gyne</b> work (labour epidurals, LSCS, gynae cases) goes to the Obs &amp; Gyne first on-call, who is kept on labour ward and gets no general calls. A second on-call covers when they are tied up, straight away for Cat 1.</li>
     <li><b>List preparation</b> goes to the doctor ticked for list prep (first or second on-call).</li>
     <li>Higher priority is placed first, then earliest “not before” time. Doctors marked <i>Off / away</i> get nothing; <i>Tied up</i> doctors are used last.</li>
     <li>Tasks with a fixed doctor or start time, and tasks in progress or done, are never moved.</li></ul></section>`;
@@ -573,18 +588,19 @@ function renderSheet() {
   const t = draft; const ty = TYPES[t.type];
   const docOpts = `<option value="">Auto (best fit)</option>` + S.doctors.map(d => `<option value="${d.id}" ${t.fixDoctor && t.doctorId === d.id ? 'selected' : ''}>${esc(d.name)} · ${d.tier === 'second' ? '2nd' : '1st'}${d.status === 'off' ? ' (off)' : ''}</option>`).join('');
   const thOpts = `<option value="">Auto (first free)</option>` + S.shift.theatres.map(x => `<option ${t.theatre === x && !t.theatreAuto ? 'selected' : ''}>${esc(x)}</option>`).join('');
-  const placeholders = { ot: 'e.g. Lap appendicectomy', em: 'e.g. ED resus – airway', aps: 'e.g. Epidural review', pre: 'e.g. Preop – hip fracture', list: "e.g. Tomorrow's emergency list" };
+  const obsThOpts = `<option value="">None – labour ward / ward</option>` + S.shift.theatres.map(x => `<option ${t.theatre === x ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  const placeholders = { obs: 'e.g. Labour epidural / LSCS Cat 2', ot: 'e.g. Lap appendicectomy', em: 'e.g. ED resus – airway', aps: 'e.g. Epidural review', pre: 'e.g. Preop – hip fracture', list: "e.g. Tomorrow's emergency list" };
   $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="taskForm" autocomplete="off">
     <div class="row"><h3>${t._new ? 'New task' : 'Edit task'}</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
     <div class="typepick">${Object.entries(TYPES).map(([k, v]) => `<button type="button" class="${v.cls}" aria-pressed="${t.type === k}" data-act="ftype" data-type="${k}">${v.short}</button>`).join('')}</div>
     <label class="f">What<input id="f-title" name="title" value="${esc(t.title)}" placeholder="${placeholders[t.type]}" required></label>
     <div class="grid2">
       <label class="f">Where (ward / bed)<input id="f-loc" name="location" value="${esc(t.location)}" placeholder="Ward 4B, bed 12"></label>
-      <label class="f">${t.type === 'ot' ? 'NCEPOD category' : 'Priority'}<select id="f-pri" name="priority">${[1, 2, 3, 4].map(p => `<option value="${p}" ${t.priority === p ? 'selected' : ''}>${p} · ${PRI[t.type][p]}</option>`).join('')}</select></label>
+      <label class="f">${t.type === 'ot' ? 'NCEPOD category' : t.type === 'obs' ? 'Category' : 'Priority'}<select id="f-pri" name="priority">${[1, 2, 3, 4].map(p => `<option value="${p}" ${t.priority === p ? 'selected' : ''}>${p} · ${PRI[t.type][p]}</option>`).join('')}</select></label>
       <label class="f">Expected minutes<input id="f-dur" name="duration" type="number" min="5" step="5" value="${t.duration}"></label>
       <label class="f">Not before<input id="f-earliest" name="earliest" type="time" value="${esc(t.earliest)}"></label>
-      ${t.type === 'ot' ? `<label class="f">Theatre<select id="f-th" name="theatre">${thOpts}</select></label>` : ''}
-      ${t.type === 'ot' || t.type === 'pre' ? `<label class="f">ASA<input id="f-asa" name="asa" value="${esc(t.asa)}" placeholder="e.g. 3E"></label>` : ''}
+      ${t.type === 'ot' || t.type === 'obs' ? `<label class="f">Theatre<select id="f-th" name="theatre">${t.type === 'obs' ? obsThOpts : thOpts}</select></label>` : ''}
+      ${t.type === 'ot' || t.type === 'pre' || t.type === 'obs' ? `<label class="f">ASA<input id="f-asa" name="asa" value="${esc(t.asa)}" placeholder="e.g. 3E"></label>` : ''}
     </div>
     <div class="grid2">
       <label class="f">Doctor<select id="f-doc" name="doctor">${docOpts}</select></label>
@@ -602,7 +618,7 @@ function readForm() {
   draft.title = v('title').trim(); draft.location = v('location').trim(); draft.notes = v('notes').trim();
   draft.priority = Number(v('priority')) || 3; draft.duration = Math.max(5, Number(v('duration')) || TYPES[draft.type].dur);
   draft.earliest = v('earliest') || S.shift.start;
-  if (draft.type === 'ot') { const th = v('theatre'); draft.theatre = th || ''; draft.theatreAuto = false; } else { draft.theatre = ''; }
+  if (draft.type === 'ot' || draft.type === 'obs') { const th = v('theatre'); draft.theatre = th || ''; draft.theatreAuto = false; } else { draft.theatre = ''; }
   if (v('asa') !== undefined) draft.asa = v('asa').trim();
   const dId = v('doctor'); const st = v('start');
   draft.fixDoctor = !!dId; if (dId) draft.doctorId = dId;
@@ -638,9 +654,9 @@ function handoverText() {
 function otListText() {
   let out = `OT LIST · ${S.shift.date}\n`;
   for (const th of S.shift.theatres) {
-    const cs = S.tasks.filter(t => t.type === 'ot' && t.theatre === th && t.status !== 'done').sort((a, b) => (a.start ?? 1e9) - (b.start ?? 1e9));
+    const cs = S.tasks.filter(t => inTheatre(t) && t.theatre === th && t.status !== 'done').sort((a, b) => (a.start ?? 1e9) - (b.start ?? 1e9));
     if (!cs.length) continue;
-    out += `\n${th}\n` + cs.map((t, i) => `  ${i + 1}. ${t.start != null ? fmt(t.start) : '--:--'}  ${t.title}${t.location ? ' – ' + t.location : ''} · NCEPOD ${PRI.ot[t.priority]}${t.asa ? ' · ASA ' + t.asa : ''} · ${doc(t.doctorId)?.name || 'unassigned'}`).join('\n') + '\n';
+    out += `\n${th}\n` + cs.map((t, i) => `  ${i + 1}. ${t.start != null ? fmt(t.start) : '--:--'}  ${t.title}${t.location ? ' – ' + t.location : ''} · ${t.type === 'ot' ? 'NCEPOD ' : ''}${PRI[t.type][t.priority]}${t.asa ? ' · ASA ' + t.asa : ''} · ${doc(t.doctorId)?.name || 'unassigned'}`).join('\n') + '\n';
   }
   return out;
 }
@@ -691,13 +707,13 @@ document.addEventListener('click', e => {
     case 'filter': ui.filter = el.dataset.f; render(); break;
     case 'up': case 'down': {
       const th = t.theatre || '';
-      const cs = S.tasks.filter(x => x.type === 'ot' && (x.theatre || '') === th).sort((p, q) => (p.start ?? 1e9) - (q.start ?? 1e9) || p.seq - q.seq);
+      const cs = S.tasks.filter(x => theatreCase(x) && (x.theatre || '') === th).sort((p, q) => (p.start ?? 1e9) - (q.start ?? 1e9) || p.seq - q.seq);
       const i = cs.indexOf(t); const j = a === 'up' ? i - 1 : i + 1; if (j < 0 || j >= cs.length) break;
       const o = cs[j];
       // swap order; equalise priority so the swap holds under NCEPOD ordering only when categories match
       [t.seq, o.seq] = [o.seq, t.seq];
       if (t.seq === o.seq) { a === 'up' ? t.seq-- : t.seq++; }
-      if (t.priority !== o.priority) toast('Different NCEPOD category – higher priority still goes first');
+      if (t.priority !== o.priority) toast('Different category – higher priority still goes first');
       for (const x of [t, o]) if (x.status === 'pending' && !x.fixStart) { x.start = null; }
       // keep both in this theatre while reordering
       for (const x of [t, o]) if (x.theatreAuto) x.theatreAuto = false;
@@ -708,14 +724,15 @@ document.addEventListener('click', e => {
       { id: uid(), name: 'Second on-call 2', tier: 'second', coordinator: false, listPrep: false, ext: '', status: 'available' },
       { id: uid(), name: 'First on-call 1', tier: 'first', coordinator: false, listPrep: true, ext: '', status: 'available' },
       { id: uid(), name: 'First on-call 2', tier: 'first', coordinator: false, listPrep: false, ext: '', status: 'available' },
-      { id: uid(), name: 'First on-call 3', tier: 'first', coordinator: false, listPrep: false, ext: '', status: 'available' }];
+      { id: uid(), name: 'First on-call 3', tier: 'first', coordinator: false, listPrep: false, ext: '', status: 'available' },
+      { id: uid(), name: 'Obs & Gyne on-call', tier: 'first', obs: true, coordinator: false, listPrep: false, ext: '', status: 'available' }];
       S.shift.date = todayISO(); ui.tab = 'team'; writePref('tab', 'team'); commit(); toast('Blank shift – add your team names'); break;
-    case 'dadd': S.doctors.push({ id: uid(), name: el.dataset.tier === 'second' ? 'New 2nd on-call' : 'New 1st on-call', tier: el.dataset.tier, coordinator: false, listPrep: false, ext: '', status: 'available' }); commit(); break;
+    case 'dadd': { const k = el.dataset.tier; S.doctors.push({ id: uid(), name: { second: 'New 2nd on-call', first: 'New 1st on-call', obs: 'New Obs & Gyne on-call' }[k], tier: k === 'second' ? 'second' : 'first', obs: k === 'obs', coordinator: false, listPrep: false, ext: '', status: 'available' }); commit(); break; }
     case 'ddel': S.doctors = S.doctors.filter(d => d.id !== id); S.tasks.forEach(x => { if (x.doctorId === id) { x.doctorId = null; x.fixDoctor = false; x.fixStart = false; if (x.status === 'pending') x.start = null; } }); autoSchedule(); commit(); break;
     case 'newshift': S.tasks = []; S.example = false; S.shift.date = todayISO(); S.doctors.forEach(d => d.status = 'available'); commit(); toast('New shift started'); break;
     case 'reset': ui.confirmReset = true; render(); break;
     case 'reset-no': ui.confirmReset = false; render(); break;
-    case 'reset-yes': S = { example: false, shift: { date: todayISO(), start: '08:00', hours: 24, theatres: ['Main OT 1', 'Main OT 2', 'Emergency OT'] }, doctors: [], tasks: [] }; ui.confirmReset = false; commit(); toast('All data deleted'); break;
+    case 'reset-yes': S = { example: false, shift: { date: todayISO(), start: '08:00', hours: 24, theatres: ['Main OT 1', 'Main OT 2', 'Emergency OT', 'Obstetric OT'] }, doctors: [], tasks: [] }; ui.confirmReset = false; commit(); toast('All data deleted'); break;
   }
 });
 
@@ -727,9 +744,10 @@ document.addEventListener('change', e => {
     case 'showdone': ui.showDone = el.checked; render(); break;
     case 'dname': d.name = el.value.trim() || d.name; S.example = false; commit(); break;
     case 'dext': d.ext = el.value.trim(); commit(); break;
-    case 'dtier': d.tier = el.value; if (d.tier !== 'second') d.coordinator = false; autoSchedule(); commit(); break;
+    case 'dtier': d.tier = el.value; if (d.tier !== 'second') d.coordinator = false; if (d.tier === 'second') d.obs = false; autoSchedule(); commit(); break;
     case 'dcoord': S.doctors.forEach(x => x.coordinator = x.id === d.id); autoSchedule(); commit(); break;
     case 'dlist': d.listPrep = el.checked; autoSchedule(); commit(); break;
+    case 'dobs': d.obs = el.checked; if (d.obs) { d.tier = 'first'; d.coordinator = false; } autoSchedule(); commit(); break;
     case 'shdate': S.shift.date = el.value || todayISO(); commit(); break;
     case 'shstart': {
       const old = startAbs(); S.shift.start = el.value || '08:00'; const diff = startAbs() - old;
