@@ -166,6 +166,19 @@ select.status { border: 1px solid var(--line); background: var(--surface-2); bor
 .plan-t tr.now td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .nowbar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); font-size: 13.5px; }
 .nowbar b.k { font-family: var(--f-display); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; color: var(--muted); font-weight: 600; }
+.rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.room { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--line); border-radius: var(--r); padding: 12px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.room.running { border-left-color: var(--ok); }
+.room.waiting { border-left-color: var(--warn); }
+.room.done { border-left-color: var(--muted); }
+.room-name { font-family: var(--f-display); font-weight: 700; font-size: 20px; letter-spacing: .03em; text-transform: uppercase; }
+.rchip { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap; background: var(--surface-2); color: var(--muted); }
+.rchip.running { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.rchip.waiting { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.rchip.cancelled { text-decoration: line-through; }
+.case-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+.case-row .t { font-weight: 700; overflow-wrap: anywhere; }
+.case-row.done .t, .case-row.cancelled .t { color: var(--muted); }
 .log { font-size: 12.5px; color: var(--muted); display: grid; gap: 2px; margin: 0; padding-left: 16px; }
 details.done-list summary { cursor: pointer; font-weight: 700; color: var(--muted); font-size: 13px; padding: 4px 0; }
 .task.done { opacity: .5; }
@@ -265,7 +278,7 @@ pre.handover { background: var(--bg); border: 1px solid var(--line); border-radi
       <button role="tab" data-tab="plan">Coverage</button>
       <button role="tab" data-tab="timeline">Schedule</button>
       <button role="tab" data-tab="tasks">Tasks</button>
-      <button role="tab" data-tab="ot">OT list</button>
+      <button role="tab" data-tab="ot">OT rooms</button>
       <button role="tab" data-tab="team">Rota &amp; teams</button>
     </nav>
   </div>
@@ -321,7 +334,7 @@ function writePref(k, v) { try { localStorage.setItem('oncall-pref-' + k, v); } 
 function todayISO() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
 const DEF_SETTINGS = () => ({ morning: true, morningStart: '07:30', morningEnd: '14:00', weekdayStart: '18:00', weekdayEnd: '07:30', holidayStart: '08:00', weekend: [5, 6], holidays: [], dutyPhones: { aps: '', pre: '69050757', em: '51680910', obs: '69621821' }, theatres: ['Main OT 1', 'Main OT 2', 'Emergency OT', 'Obstetric OT'] });
-function blankRoot() { return { v: 2, example: false, settings: DEF_SETTINGS(), staff: [], teams: [], rota: {}, shifts: {} }; }
+function blankRoot() { return { v: 2, example: false, settings: DEF_SETTINGS(), staff: [], teams: [], rota: {}, shifts: {}, ot: {} }; }
 function starterRoot() {
   const r = blankRoot();
   const sf = (name, tier, obs) => ({ id: uid(), name, tier, obs: !!obs, ext: '' });
@@ -503,7 +516,7 @@ function applyTeamToShift(sh, teamId) {
   sh.tasks.forEach(t => { if (t.doctorId && !ids.has(t.doctorId)) { t.doctorId = null; t.fixDoctor = false; t.fixStart = false; if (t.status === 'pending') t.start = null; } });
   const prevS = S; S = sh; autoSchedule(); S = prevS;
 }
-function pruneShifts() { const cut = addDays(todayISO(), -60); Object.keys(R.shifts).forEach(k => { if (k < cut) delete R.shifts[k]; }); Object.keys(R.rota).forEach(k => { if (k < cut) delete R.rota[k]; }); }
+function pruneShifts() { const cut = addDays(todayISO(), -60); Object.keys(R.ot || {}).forEach(k => { if (k < cut) delete R.ot[k]; }); Object.keys(R.shifts).forEach(k => { if (k < cut) delete R.shifts[k]; }); Object.keys(R.rota).forEach(k => { if (k < cut) delete R.rota[k]; }); }
 
 /* ---------- time helpers (minutes from shift start) ---------- */
 function hm2abs(hm) { if (!hm || !/^\d{1,2}:\d{2}$/.test(hm)) return null; const [h, m] = hm.split(':').map(Number); return h * 60 + m; }
@@ -719,7 +732,7 @@ function render() {
   const mb = document.getElementById('meBtn'); mb.textContent = (meDoc() || meStaff()) ? 'Me: ' + myName() : ui.meId === 'observer' ? 'Observer' : 'Who are you?'; mb.classList.toggle('unset', !ui.meId);
   document.getElementById('tabMine').hidden = role() === 'third';
   if (ui.tab === 'mine' && role() === 'third') ui.tab = 'board';
-  const views = { mine: viewMine, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewOT, team: viewTeam };
+  const views = { mine: viewMine, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewRooms, team: viewTeam };
   const welcome = !sync.code && R.example && readPref('demo') !== '1';
   document.getElementById('tabs').hidden = welcome;
   ['.shiftnav', '#stats', '#meBtn'].forEach(q => { const e = document.querySelector(q); if (e) e.hidden = welcome; });
@@ -884,6 +897,75 @@ function viewTasks() {
   return h;
 }
 
+/* ---------- OT rooms: what is running in each room, and whether lists are finished ---------- */
+const CASE_ST = { waiting: 'Waiting', running: 'Running', done: 'Finished', cancelled: 'Cancelled' };
+function otDay(date, create) {
+  R.ot = R.ot || {}; let d = R.ot[date];
+  if (!d && create) d = R.ot[date] = { rooms: R.settings.theatres.map(n => ({ id: uid(), name: n, list: '', anaes: '', cases: [] })) };
+  return d;
+}
+function dayRooms(date) { const d = otDay(date); return d ? d.rooms : R.settings.theatres.map(n => ({ id: 'v:' + n, name: n, list: '', anaes: '', cases: [] })); }
+function realRoom(rid) { if (String(rid).startsWith('v:')) { const d = otDay(S.date, true); return d.rooms.find(x => x.name === rid.slice(2)); } const d = otDay(S.date); return d && d.rooms.find(x => x.id === rid); }
+// anyone signed in on this phone can update rooms (consultants running lists are often not on the on-call shift)
+function canOt() { if (!verified()) return false; const r = role(); return r === 'none' || (!!meStaff() && ui.meId !== 'observer'); }
+function hhmm(iso) { return iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''; }
+function minsSince(a, b) { return Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 60000)); }
+function durTxt(m) { return m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : m + ' min'; }
+function roomCases(room) {
+  const el = (room.cases || []).map(c => Object.assign({ kind: 'el' }, c));
+  const oc = (S.tasks || []).filter(t => inTheatre(t) && t.theatre === room.name).map(t => ({ id: t.id, kind: 'oc', title: t.title || TYPES[t.type].label, location: t.location,
+    status: { pending: 'waiting', help: 'running', active: 'running', done: 'done' }[t.status], startedAt: t.startedAt, endedAt: t.endedAt, who: (doc(t.doctorId) || {}).name }));
+  return el.concat(oc);
+}
+function roomState(cs) { if (cs.some(c => c.status === 'running')) return 'running'; if (cs.some(c => c.status === 'waiting')) return 'waiting'; return cs.length ? 'done' : 'empty'; }
+function caseButtons(rid, c) {
+  const b = (v, l, cls) => `<button class="btn sm ${cls || ''}" data-act="case-st" data-room="${esc(rid)}" data-case="${c.id}" data-kind="${c.kind}" data-v="${v}">${l}</button>`;
+  return c.status === 'waiting' ? b('running', 'Start', 'primary') + (c.kind === 'el' ? b('cancelled', 'Cancel', 'ghost') : '')
+    : c.status === 'running' ? b('done', 'Finish', 'primary') + b('waiting', 'Not started', 'ghost')
+    : c.status === 'done' ? b('running', 'Reopen', 'ghost') : b('waiting', 'Restore', 'ghost');
+}
+function roomCard(r, cs, edit) {
+  const st = roomState(cs); const run = cs.find(c => c.status === 'running'); const next = cs.find(c => c.status === 'waiting');
+  const live = cs.filter(c => c.status !== 'cancelled'); const n = live.length, d = live.filter(c => c.status === 'done').length;
+  const label = st === 'running' ? 'Running' + (run.startedAt ? ' · ' + durTxt(minsSince(run.startedAt)) : '') : st === 'waiting' ? (d ? 'Between cases' : 'Not started') : st === 'done' ? 'List finished' : 'No cases';
+  const open = (ui.openRooms || new Set()).has(r.name);
+  const loc = c => c.location ? ` <span class="empty">${esc(c.location)}</span>` : '';
+  return `<article class="room ${st}">
+    <div class="row"><div class="room-name">${esc(r.name)}</div><span class="spacer"></span><span class="rchip ${st}">${esc(label)}</span></div>
+    ${r.list || r.anaes ? `<div class="empty">${esc(r.list || '')}${r.list && r.anaes ? ' · ' : ''}${r.anaes ? 'Anaesthesia: <b>' + esc(r.anaes) + '</b>' : ''}</div>` : ''}
+    ${run ? `<div><b>Now:</b> ${esc(run.title)}${loc(run)}${run.startedAt ? ` <span class="empty num">since ${hhmm(run.startedAt)}</span>` : ''}${run.kind === 'oc' ? ' <span class="chip">On-call</span>' : ''}</div>` : ''}
+    ${next ? `<div class="empty">Next: <b style="color:var(--fg)">${esc(next.title)}</b>${loc(next)}</div>` : st === 'done' ? '<div class="empty">All cases finished</div>' : ''}
+    ${n ? `<div><div class="load"><span style="width:${d / n * 100}%;background:var(--ok)"></span></div><div class="load-l"><span>${d} of ${n} finished</span>${cs.some(c => c.status === 'cancelled') ? `<span>${cs.filter(c => c.status === 'cancelled').length} cancelled</span>` : ''}</div></div>` : ''}
+    <div class="row">${edit && run ? `<button class="btn sm primary" data-act="case-st" data-room="${esc(r.id)}" data-case="${run.id}" data-kind="${run.kind}" data-v="done">Finish case</button>` : ''}
+      ${edit && next ? `<button class="btn sm ${run ? '' : 'primary'}" data-act="case-st" data-room="${esc(r.id)}" data-case="${next.id}" data-kind="${next.kind}" data-v="running">Start next</button>` : ''}
+      <span class="spacer"></span><button class="icon-btn" data-act="room-open" data-name="${esc(r.name)}">${open ? 'Hide list' : 'Show list · ' + cs.length}</button></div>
+    ${open ? `<div>${cs.map(c => `<div class="case-row ${c.status}"><span class="rchip ${c.status}">${CASE_ST[c.status]}</span><span class="t">${esc(c.title)}</span>${loc(c)}
+        ${c.startedAt ? `<span class="empty num">${hhmm(c.startedAt)}${c.endedAt ? '–' + hhmm(c.endedAt) + ' (' + durTxt(minsSince(c.startedAt, c.endedAt)) + ')' : ''}</span>` : ''}${c.kind === 'oc' ? '<span class="chip">On-call' + (c.who ? ' · ' + esc(c.who) : '') + '</span>' : ''}
+        ${edit ? '<span class="spacer"></span>' + caseButtons(r.id, c) + (c.kind === 'el' ? `<button class="icon-btn" data-act="case-del" data-room="${esc(r.id)}" data-case="${c.id}" aria-label="Remove case">Remove</button>` : '') : ''}</div>`).join('') || '<p class="empty" style="margin:0">No cases yet.</p>'}
+      ${edit ? `<div class="row" style="margin-top:6px"><input class="who" id="ca-${esc(r.name)}" placeholder="Case, e.g. Lap chole" style="flex:2 1 140px;padding:6px"><input class="who" id="cl-${esc(r.name)}" placeholder="Ward / bed" style="flex:1 1 90px;padding:6px"><button class="btn sm" data-act="case-add" data-room="${esc(r.id)}" data-name="${esc(r.name)}">Add</button></div>` : ''}</div>` : ''}
+  </article>`;
+}
+function viewRooms() {
+  const date = S.date; const rooms = dayRooms(date); const edit = canOt();
+  const all = rooms.map(r => ({ r, cs: roomCases(r) }));
+  const cnt = st => all.filter(x => roomState(x.cs) === st).length;
+  const live = all.flatMap(x => x.cs.filter(c => c.status !== 'cancelled'));
+  let h = `<div class="nowbar"><b class="k">OT · ${esc(dayLabel(date))}</b><span><b>${cnt('running')}</b> running</span><span><b>${cnt('waiting')}</b> waiting</span><span><b>${cnt('done')}</b> finished</span><span>Cases done <b>${live.filter(c => c.status === 'done').length}/${live.length}</b></span></div>`;
+  if (!edit && meStaff() && sync.code) h += pinBanner();
+  h += `<div class="rooms">${all.map(({ r, cs }) => roomCard(r, cs, edit)).join('')}</div>`;
+  const dis = edit ? '' : 'disabled';
+  const prev = Object.keys(R.ot || {}).filter(k => k < date).sort().pop();
+  h += `<details class="panel" id="distPanel" ${!otDay(date) || ui.distOpen ? 'open' : ''}><summary style="cursor:pointer"><h2 style="display:inline">OT distribution · ${esc(dayLabel(date))}</h2></summary>
+    <p class="empty" style="margin:8px 0">Rooms for this day with their list (specialty or surgeon) and anaesthetist.</p>
+    <div class="scroll-x"><table class="team-t"><thead><tr><th>Room</th><th>List / specialty</th><th>Anaesthesia</th><th></th></tr></thead><tbody>${rooms.map(r => `<tr>
+      <td><input type="text" id="rn-${esc(r.name)}" value="${esc(r.name)}" data-act="room-f" data-f="name" data-room="${esc(r.id)}" ${dis} aria-label="Room name"></td>
+      <td><input type="text" id="rl-${esc(r.name)}" value="${esc(r.list || '')}" data-act="room-f" data-f="list" data-room="${esc(r.id)}" ${dis} placeholder="e.g. General surgery" aria-label="List"></td>
+      <td><input type="text" id="ra-${esc(r.name)}" value="${esc(r.anaes || '')}" data-act="room-f" data-f="anaes" data-room="${esc(r.id)}" ${dis} placeholder="Name(s)" aria-label="Anaesthesia"></td>
+      <td>${edit ? `<button class="btn sm ghost danger" data-act="room-del" data-room="${esc(r.id)}">Remove</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+    ${edit ? `<div class="row" style="margin-top:8px"><input class="who" id="newRoom" placeholder="New room, e.g. OR 5" style="padding:6px"><button class="btn sm" data-act="room-add">Add room</button>${prev ? `<button class="btn sm" data-act="rooms-copy" data-from="${prev}">Copy rooms from ${esc(dayLabel(prev))}</button>` : ''}</div>` : ''}</details>`;
+  h += `<section style="display:grid;gap:10px"><h2>On-call OT list</h2>${viewOT()}</section>`;
+  return h;
+}
 function viewOT() {
   const lp = S.doctors.filter(d => d.listPrep).map(d => d.name).join(', ') || 'not set';
   const cases = S.tasks.filter(theatreCase);
@@ -1162,10 +1244,24 @@ function mergeShift(b, m, t) {
   return { ...t, teamId: pick(b, m, t, 'teamId'), holiday: pick(b, m, t, 'holiday'), shift: pick(b, m, t, 'shift'), plan: pick(b, m, t, 'plan'),
     doctors: mergeColl(b.doctors, m.doctors, t.doctors), tasks: mergeColl(b.tasks, m.tasks, t.tasks), log: mergeColl(b.log, m.log, t.log) };
 }
+// OT rooms: per day, room details and each room's cases merge record by record, so two rooms updated at once both survive
+function mergeOt(b, m, t) {
+  const out = {};
+  for (const k of new Set([...Object.keys(m), ...Object.keys(t)])) {
+    const bd = b[k], md = m[k], td = t[k];
+    if (!md) { out[k] = td; continue; } if (!td || same(bd, td)) { out[k] = md; continue; } if (same(bd, md)) { out[k] = td; continue; }
+    const base = bd || td; const bR = new Map((base.rooms || []).map(r => [r.id, r])), tR = new Map((td.rooms || []).map(r => [r.id, r])), mR = new Map((md.rooms || []).map(r => [r.id, r]));
+    const rooms = mergeColl(base.rooms, md.rooms, td.rooms).map(r => { const br = bR.get(r.id), mr = mR.get(r.id), tr = tR.get(r.id);
+      return br && mr && tr ? { ...tr, name: pick(br, mr, tr, 'name'), list: pick(br, mr, tr, 'list'), anaes: pick(br, mr, tr, 'anaes'), cases: mergeColl(br.cases, mr.cases, tr.cases) } : r; });
+    out[k] = { ...td, rooms };
+  }
+  return out;
+}
 function merge(base, mine, theirs) {
   theirs = migrate(theirs) || theirs; base = base ? (migrate(base) || base) : theirs;
   const out = { ...theirs, example: !!(mine.example && theirs.example), settings: pick(base, mine, theirs, 'settings'),
-    staff: mergeColl(base.staff, mine.staff, theirs.staff), teams: mergeColl(base.teams, mine.teams, theirs.teams), rota: {}, shifts: {} };
+    staff: mergeColl(base.staff, mine.staff, theirs.staff), teams: mergeColl(base.teams, mine.teams, theirs.teams), rota: {}, shifts: {},
+    ot: mergeOt(base.ot || {}, mine.ot || {}, theirs.ot || {}) };
   for (const k of new Set([...Object.keys(mine.rota || {}), ...Object.keys(theirs.rota || {}), ...Object.keys(base.rota || {})])) {
     const v = (base.rota || {})[k] === (mine.rota || {})[k] ? (theirs.rota || {})[k] : (mine.rota || {})[k];
     if (v) out.rota[k] = v;
@@ -1363,6 +1459,8 @@ function setTaskStatus(t, v) {
   if (v === 'help') { t.helpAt = new Date().toISOString(); t.helpBy = ''; if (t.start == null) { const nr = nowRel(); t.start = nr < shiftLen() ? nr : 0; } }
   else { t.helpBy = ''; }
   if (v === 'done') t.doneBy = myName();
+  if (v === 'active' && prev !== 'help') t.startedAt = new Date().toISOString();
+  if (v === 'done') t.endedAt = new Date().toISOString();
   if (v === 'pending') autoSchedule();
   commit();
   toast(v === 'help' ? 'Help requested – the whole team can see it' : v === 'done' ? 'Marked done' : 'Status: ' + ST[v]);
@@ -1384,6 +1482,31 @@ document.addEventListener('click', e => {
   if (a === 'close-bg' && e.target !== el) return;
   const t = id ? S.tasks.find(x => x.id === id) : null;
   const viewOnly = new Set(['signout', 'pin-open', 'hist-load', 'hist-no', 'demo', 'welcome', 'tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
+  const otActs = new Set(['case-st', 'case-add', 'case-del', 'room-add', 'room-del', 'rooms-copy']);
+  if (a === 'room-open') { ui.openRooms = ui.openRooms || new Set(); const k = el.dataset.name; ui.openRooms.has(k) ? ui.openRooms.delete(k) : ui.openRooms.add(k); render(); return; }
+  if (otActs.has(a)) {
+    if (!canOt()) { toast(sync.code && meStaff() ? 'Enter your PIN to update OT rooms' : 'Choose who you are to update OT rooms'); return; }
+    const room = el.dataset.room ? realRoom(el.dataset.room) : null; const now = new Date().toISOString();
+    if (a === 'case-st') {
+      const v = el.dataset.v;
+      if (el.dataset.kind === 'oc') { const tk = S.tasks.find(x => x.id === el.dataset.case); if (tk) setTaskStatus(tk, { waiting: 'pending', running: 'active', done: 'done' }[v] || 'pending'); return; }
+      const c = room && room.cases.find(x => x.id === el.dataset.case); if (!c) return;
+      if (v === 'running') room.cases.forEach(x => { if (x.status === 'running' && x.id !== c.id) { x.status = 'done'; x.endedAt = now; } });   // one case at a time per room
+      c.status = v; if (v === 'running') { c.startedAt = now; c.endedAt = null; } else if (v === 'done' || v === 'cancelled') { c.endedAt = now; } else { c.startedAt = null; c.endedAt = null; }
+      c.by = myName(); commit(); toast(`${room.name}: ${c.title} – ${CASE_ST[v]}`); return;
+    }
+    if (a === 'case-add') {
+      const ti = document.getElementById('ca-' + el.dataset.name), lo = document.getElementById('cl-' + el.dataset.name);
+      const title = (ti && ti.value || '').trim(); if (!title) { toast('Type the case first'); return; }
+      room.cases.push({ id: uid(), title, location: (lo && lo.value || '').trim(), status: 'waiting', startedAt: null, endedAt: null, by: myName() });
+      commit(); const again = document.getElementById('ca-' + el.dataset.name); if (again) again.focus(); return;
+    }
+    if (a === 'case-del') { room.cases = room.cases.filter(x => x.id !== el.dataset.case); commit(); return; }
+    if (a === 'room-add' || a === 'room-del' || a === 'rooms-copy') ui.distOpen = true;
+    if (a === 'room-add') { const v = (document.getElementById('newRoom').value || '').trim(); if (!v) { toast('Type the room name'); return; } const d = otDay(S.date, true); if (d.rooms.some(x => x.name === v)) { toast('That room is already listed'); return; } d.rooms.push({ id: uid(), name: v, list: '', anaes: '', cases: [] }); commit(); return; }
+    if (a === 'room-del') { const d = otDay(S.date, true); const rm = realRoom(el.dataset.room); if (rm && rm.cases.length) { toast('Remove its cases first'); return; } d.rooms = d.rooms.filter(x => x !== rm); commit(); return; }
+    if (a === 'rooms-copy') { const from = R.ot[el.dataset.from]; R.ot[S.date] = { rooms: from.rooms.map(x => ({ id: uid(), name: x.name, list: x.list, anaes: x.anaes, cases: [] })) }; commit(); toast('Rooms copied – add today\'s cases'); return; }
+  }
   const manage = new Set(['pin-reset', 'hist-restore', 'hist-yes', 'fill', 'team-add', 'team-del', 'tm-del', 'sf-add', 'sf-del', 'hol-add', 'hol-del', 'reset', 'reset-yes']);
   if (manage.has(a)) { if (!canManage()) { toast('Only second on-calls can change the rota and teams'); return; } }
   else if (!canEdit() && !viewOnly.has(a)) { toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
@@ -1513,6 +1636,12 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const el = e.target; const a = el.dataset.act; if (!a) return;
   const d = el.dataset.id ? doc(el.dataset.id) : null;
+  if (a === 'room-f') {
+    if (!canOt()) { render(); toast('Enter your PIN to update OT rooms'); return; }
+    ui.distOpen = true; const rm = realRoom(el.dataset.room); if (!rm) return; const v = el.value.trim();
+    if (el.dataset.f === 'name') { if (!v) { render(); return; } const old = rm.name; rm.name = v; S.tasks.forEach(t => { if (t.theatre === old) t.theatre = v; }); } else rm[el.dataset.f] = v;
+    commit(); return;
+  }
   const manageCh = new Set(['set-morning', 'set-ms', 'set-me', 'rota-team', 'tm-coord', 'tm-lp', 'tm-duty', 'tm-third', 'set-ph', 'tm-add', 'tm-name', 'sf-name', 'sf-tier', 'sf-obs', 'sf-ext', 'set-ws', 'set-we', 'set-hs', 'set-th', 'set-wk']);
   if (manageCh.has(a)) { if (!canManage()) { render(); toast('Only second on-calls can change the rota and teams'); return; } }
   else if (!canEdit() && a !== 'showdone') { render(); toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
@@ -1598,6 +1727,7 @@ setInterval(() => { if (sync.code && !document.hidden) { sync.dirty ? push() : p
 document.addEventListener('visibilitychange', () => { if (!document.hidden && sync.code) pull(false); });
 document.addEventListener('focusout', () => setTimeout(() => { if (sync.needRender && !$main.contains(document.activeElement)) { sync.needRender = false; render(); } }, 0));
 setInterval(renderSyncChip, 30000);
+setInterval(() => { if (ui.tab === 'ot' && !draft && !document.hidden) safeRender(); }, 60000);
 })();
 </script>
 <script>

@@ -47,6 +47,14 @@ Each phone chooses **who you are** (button at the top). The app then adapts:
 - **Second on-call:** assigns any task to a doctor from the task card, and posts each first on-call *Inside OT* (any or a named theatre) or *Outside OT*.
 - **First on-call:** *My work* shows their own cases and duties. They post what they receive and mark each one To do, In progress, Done or Need help. Help requests appear at the top of everyone's board, and anyone can tap *I'll go*.
 
+## OT rooms
+The **OT rooms** tab is a live board of every operating room for the day:
+- each room shows *Running* (with time since the case started), *Between cases*, *Not started*, *List finished* or *No cases*, the case running now, the next case, and how many are finished;
+- **Start next** and **Finish case** update a room in one tap (starting the next case finishes the one before); the full list per room lets you add, start, finish or cancel cases;
+- emergency on-call cases booked into a room appear there too;
+- **OT distribution** sets each day's rooms with their list/specialty and anaesthetist, and can copy the rooms from the previous day.
+Anyone signed in with their PIN can update rooms, including consultants who are not on the on-call shift.
+
 ## PINs and history
 - **Personal PIN:** the first time someone picks their name on a team board they set a 4–6 digit PIN; after that the name needs that PIN. Once anyone on the board has a PIN, only phones signed in with their own PIN can make changes, and the server records who really made each change. Five wrong tries lock the name for 15 minutes. A second or third on-call can reset someone's PIN under *Rota & teams*.
 - **History & undo:** the server keeps earlier versions of the board for 14 days (each time a different person changes it, every 10 minutes, and before anything large is deleted). A second or third on-call can restore any of them under *Rota & teams → History & undo*; the board being replaced is kept too.
