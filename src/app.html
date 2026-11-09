@@ -702,7 +702,10 @@ function render() {
   document.getElementById('tabMine').hidden = role() === 'third';
   if (ui.tab === 'mine' && role() === 'third') ui.tab = 'board';
   const views = { mine: viewMine, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewOT, team: viewTeam };
-  $main.innerHTML = (views[ui.tab] || viewBoard)();
+  const welcome = !sync.code && R.example && readPref('demo') !== '1';
+  document.getElementById('tabs').hidden = welcome;
+  ['.shiftnav', '#stats', '#meBtn'].forEach(q => { const e = document.querySelector(q); if (e) e.hidden = welcome; });
+  $main.innerHTML = welcome ? viewWelcome() : (views[ui.tab] || viewBoard)();
   if (ui.tab === 'timeline') { const w = $main.querySelector('.tl-wrap'); const n = $main.querySelector('.now'); if (w && n && !w.dataset.scrolled) { w.scrollLeft = Math.max(0, n.offsetLeft - 220); w.dataset.scrolled = 1; } }
 }
 
@@ -737,8 +740,15 @@ function helpQueue(exceptMe) {
 }
 function exampleBanner() {
   if (!R.example) return '';
-  return `<div class="banner"><span>Example department loaded (two teams, a rota and tonight's work) so you can see how it works. Start blank to enter your own staff and teams.</span>
-    <button class="btn sm" data-act="clear-example">Start blank</button></div>`;
+  return `<div class="banner" style="border:2px solid var(--warn);color:var(--fg)"><span><b style="color:var(--warn)">DEMO – sample names, not your team.</b> To see your department, open the team link from your group chat or enter the team code.</span>
+    <button class="btn sm primary" data-act="welcome">Join my team board</button></div>`;
+}
+// first screen when this phone has no team board: join, or look at the demo on purpose
+function viewWelcome() {
+  return `<section class="panel" style="max-width:560px;margin:24px auto 0"><h2>Open your team board</h2>
+    <p style="margin:0">Open the team link your coordinator posted in the group chat, or type the team code here.</p>
+    <div class="row" style="align-items:flex-end"><label class="f" style="flex:1 1 220px">Team code<input id="joinCode" placeholder="ABCD-EFGH-JKLM" value="${esc(sync.joinPrefill)}" autocapitalize="characters" spellcheck="false"></label><button class="btn primary" data-act="sync-join">Join</button></div>
+    <p class="empty" style="margin:0">Setting the app up for a new department? <button class="icon-btn" data-act="demo">See a demo</button> or <button class="icon-btn" data-act="clear-example">start a new board</button>.</p></section>`;
 }
 
 function taskItem(t, opts = {}) {
@@ -1289,13 +1299,15 @@ document.addEventListener('click', e => {
   const a = el.dataset.act; const id = el.dataset.id;
   if (a === 'close-bg' && e.target !== el) return;
   const t = id ? S.tasks.find(x => x.id === id) : null;
-  const viewOnly = new Set(['tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
+  const viewOnly = new Set(['demo', 'welcome', 'tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
   const manage = new Set(['fill', 'team-add', 'team-del', 'tm-del', 'sf-add', 'sf-del', 'hol-add', 'hol-del', 'reset', 'reset-yes']);
   if (manage.has(a)) { if (!canManage()) { toast('Only second on-calls can change the rota and teams'); return; } }
   else if (!canEdit() && !viewOnly.has(a)) { toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
   if (a === 'edit' && t && !canEditTask(t)) { toast("Only the second on-call can change another doctor's task"); return; }
   switch (a) {
     case 'whoami': showWho(); break;
+    case 'demo': writePref('demo', '1'); ui.tab = 'board'; render(); toast('Demo – sample names only'); break;
+    case 'welcome': writePref('demo', '0'); render(); window.scrollTo(0, 0); break;
     case 'tab': ui.tab = el.dataset.tab; writePref('tab', ui.tab); render(); window.scrollTo(0, 0); break;
     case 'plan-copy': showText('Coverage plan', planText()); break;
     case 'plan-make': {
