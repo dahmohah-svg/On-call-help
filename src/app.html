@@ -1191,7 +1191,7 @@ function viewTeam() {
     <li>Tasks with a fixed doctor or start time, and tasks in progress or done, are never moved.</li></ul></section>`;
   h += viewPrivacy();
   h += viewHistory();
-  h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">${sync.code ? 'This board is shared with your department. Deleting here deletes it for everyone.' : 'Everything is saved in this browser only.'} Shifts older than 60 days are cleared automatically. Use bed and ward, never patient names or record numbers.</p>
+  h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">${sync.code ? 'This board is shared with your department. Deleting here deletes it for everyone.' : 'Everything is saved in this browser only.'} Shifts older than 60 days are cleared automatically. App version <span class="num">__APP_VERSION__</span>. Use bed and ward, never patient names or record numbers.</p>
     <div class="row" ${canManage() ? '' : 'hidden'}>${ui.confirmReset ? `<div class="confirm">${sync.code ? 'Delete the rota, teams, staff and all shifts for everyone?' : 'Delete everything on this device?'} <button class="btn sm danger" data-act="reset-yes">Delete everything</button><button class="btn sm" data-act="reset-no">Keep</button></div>` : `<button class="btn sm danger ghost" data-act="reset">Delete everything</button>`}</div></section>`;
   return h;
 }

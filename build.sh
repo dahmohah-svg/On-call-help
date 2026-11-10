@@ -32,4 +32,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 </html>
 TAIL
 } > public/index.html
+# stamp the version (Vercel provides the commit; locally use git)
+v="$(printf '%s' "${VERCEL_GIT_COMMIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo dev)}" | cut -c1-7)"
+sed -i "s/__APP_VERSION__/$v/" public/index.html
 echo "Built public/index.html"
