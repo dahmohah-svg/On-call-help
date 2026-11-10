@@ -1136,7 +1136,7 @@ function viewTeam() {
   // rota
   const days = Array.from({ length: 21 }, (_, i) => addDays(today, i - 1));
   const teamOpts = sel => `<option value="">— no team —</option>` + R.teams.map(t => `<option value="${t.id}" ${sel === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
-  h += `<section class="panel"><div class="row"><h2>Rota</h2><span class="spacer"></span><span class="empty">${st.morning ? 'Morning ' + esc(st.morningStart) + '–' + esc(st.morningEnd) + ' · ' : ''}Night ${esc(st.weekdayStart)}–${esc(st.weekdayEnd)} · Holiday ${esc(st.holidayStart)}–${esc(st.holidayStart)}</span></div>
+  h += `<section class="panel"><div class="row"><h2>Rota</h2><span class="spacer"></span>${canManage() ? '<button class="btn sm primary" data-act="rota-import">Import rota from text</button>' : ''}<span class="empty">${st.morning ? 'Morning ' + esc(st.morningStart) + '–' + esc(st.morningEnd) + ' · ' : ''}Night ${esc(st.weekdayStart)}–${esc(st.weekdayEnd)} · Holiday ${esc(st.holidayStart)}–${esc(st.holidayStart)}</span></div>
     <div class="scroll-x"><table class="team-t rota-t"><thead><tr><th>Shift</th><th>Type</th><th>Team</th><th>Changes</th><th></th></tr></thead><tbody>${days.map(dt => {
       const sh = R.shifts[dt]; const hol = isHoliday(dt, sh); const tid = sh ? sh.teamId : (R.rota[dt] || '');
       const ch = sh ? (sh.log || []).length : 0;
@@ -1207,9 +1207,85 @@ function viewTeam() {
     <li>Tasks with a fixed doctor or start time, and tasks in progress or done, are never moved.</li></ul></section>`;
   h += viewPrivacy();
   h += viewHistory();
-  h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">${sync.code ? 'This board is shared with your department. Deleting here deletes it for everyone.' : 'Everything is saved in this browser only.'} Shifts older than 60 days are cleared automatically. App version <span class="num">57b8b7d</span>. Use bed and ward, never patient names or record numbers.</p>
+  h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">${sync.code ? 'This board is shared with your department. Deleting here deletes it for everyone.' : 'Everything is saved in this browser only.'} Shifts older than 60 days are cleared automatically. App version <span class="num">bd698c5</span>. Use bed and ward, never patient names or record numbers.</p>
     <div class="row" ${canManage() ? '' : 'hidden'}>${ui.confirmReset ? `<div class="confirm">${sync.code ? 'Delete the rota, teams, staff and all shifts for everyone?' : 'Delete everything on this device?'} <button class="btn sm danger" data-act="reset-yes">Delete everything</button><button class="btn sm" data-act="reset-no">Keep</button></div>` : `<button class="btn sm danger ghost" data-act="reset">Delete everything</button>`}</div></section>`;
   return h;
+}
+/* ---------- import a week's on-call rota from text ---------- */
+// one block per day: a date line, then "Slot: name, name" lines (slot names as on the department rota)
+const ROTA_SLOTS = [
+  [/^teams?$/, 'team'], [/^trainees?( on-?call)?$/, 'trainee'], [/^list( prep(aration)?)?$/, 'list'],
+  [/^(aps|aps.*trauma.*|aps.*code.*)$/, 'aps'], [/^(assessment|preop|pre-?op assessment)$/, 'pre'], [/^(emergency( call)?s?|em)$/, 'em'],
+  [/^(ob\/?gyn|obs|obgyn|obs ?& ?gyne?|obstetrics?)$/, 'obs'], [/^(second|2nd|second on-?call|2nd on-?call)$/, 'second'],
+  [/^(coordinator|team coordinator|coord)$/, 'coord'], [/^(cardiac|cardiac an(a)?esthesia)$/, 'cardiac'], [/^(regular ot|regular|third ot|ot)$/, 'ot'],
+];
+function parseRota(txt) {
+  const days = {}; let cur = null; const bad = [];
+  txt.split(/\r?\n/).forEach((line, i) => {
+    const l = line.trim(); if (!l || l.startsWith('#')) return;
+    const dm = l.match(/^(\d{4}-\d{2}-\d{2})\b/);
+    if (dm && !l.includes(':')) { cur = dm[1]; days[cur] = days[cur] || {}; return; }
+    const m = l.match(/^([^:]+):\s*(.*)$/); if (!cur || !m) { bad.push(i + 1); return; }
+    const key = m[1].trim().toLowerCase(); const slot = (ROTA_SLOTS.find(([re]) => re.test(key)) || [])[1];
+    if (!slot) { bad.push(i + 1); return; }
+    const names = m[2].split(/[,،;\/]+/).map(x => x.trim()).filter(x => x && !/^[-–—_]+$/.test(x));
+    if (slot === 'team') days[cur].team = m[2].trim(); else days[cur][slot] = (days[cur][slot] || []).concat(names);
+  });
+  return { days, bad };
+}
+function applyRotaDay(date, d, added) {
+  const RANK = { trainee: 0, first: 1, second: 2, third: 3 };
+  const findStaff = n => R.staff.find(x => x.name.trim().toLowerCase() === n.trim().toLowerCase());
+  const people = new Map();   // name -> slot fields, in rota order
+  const put = (n, tier, f) => { const k = n.toLowerCase(); const cur = people.get(k) || { name: n, tier, duty: '', thirdRole: '', coordinator: false, listPrep: false };
+    if (tier && (!cur.tier || RANK[tier] > RANK[cur.tier])) cur.tier = tier; Object.assign(cur, f); people.set(k, cur); };
+  (d.cardiac || []).forEach(n => put(n, 'third', { thirdRole: 'cardiac' }));
+  (d.ot || []).forEach(n => put(n, 'third', { thirdRole: 'ot' }));
+  (d.coord || []).forEach(n => put(n, 'second', { coordinator: true }));
+  (d.second || []).forEach(n => put(n, 'second', {}));
+  ['aps', 'pre', 'em', 'obs'].forEach(k => (d[k] || []).forEach(n => put(n, 'first', { duty: k })));
+  (d.list || []).forEach(n => put(n, null, { listPrep: true }));
+  (d.trainee || []).forEach(n => put(n, 'trainee', {}));
+  const docs = [...people.values()].map(p => {
+    let sf = findStaff(p.name);
+    const tier = p.tier || (sf ? sf.tier : 'first');
+    if (!sf) { sf = { id: 's-' + p.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '-' + uid().slice(0, 3), name: p.name, tier, obs: p.duty === 'obs', ext: '' }; R.staff.push(sf); added.push(p.name); }
+    return { id: sf.id, name: sf.name, tier, duty: tier === 'first' ? p.duty : '', obs: p.duty === 'obs', thirdRole: tier === 'third' ? p.thirdRole : '',
+      coordinator: p.coordinator && tier === 'second', listPrep: p.listPrep, ext: sf.ext || '', status: 'available' };
+  });
+  const team = d.team ? R.teams.find(t => t.name.trim().toLowerCase() === d.team.trim().toLowerCase()) : null;
+  if (team) R.rota[date] = team.id;
+  for (const key of sessionsOf(date)) {
+    const sh = ensureShift(key); const keep = new Map(sh.doctors.map(x => [x.id, x]));
+    let list = docs.map(x => Object.assign({}, x));
+    if (sh.session === 'am') list = list.filter(x => (x.tier === 'first' && !(x.listPrep && !x.duty)) || x.tier === 'trainee').map(x => Object.assign(x, { coordinator: false, listPrep: false }));
+    list.forEach(x => { const k = keep.get(x.id); if (k) { x.status = k.status; if (k.post) x.post = k.post; } });
+    sh.doctors = list; if (team) sh.teamId = team.id;
+    const ids = new Set(list.map(x => x.id));
+    sh.tasks.forEach(t => { if (t.doctorId && !ids.has(t.doctorId)) { t.doctorId = null; t.fixDoctor = false; t.fixStart = false; if (t.status === 'pending') t.start = null; } });
+    if (sh.plan) { const ok = id => !id || ids.has(id); if (![...sh.plan.sec.map(b => b.id), ...sh.plan.first.flatMap(b => [b.phone, b.ot])].every(ok)) sh.plan = null; }
+    const prevS = S; S = sh; logChange('Rota imported: ' + list.length + ' on shift'); autoSchedule(); S = prevS;
+  }
+  return docs.length;
+}
+function showRotaImport(err) {
+  $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="rotaImportForm" autocomplete="off">
+    <div class="row"><h3>Import rota</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
+    <p class="empty" style="margin:0">One block per day: a date line, then one line per slot. Names separated by commas. Leave a slot out if nobody is on it.<br>
+      <span class="num">2026-11-15<br>Team: Team 3<br>Trainee: Duaa<br>List prep: Salman<br>APS: Fahad, Sdqat<br>Assessment: Nerman<br>Emergency: Raza<br>OBGYN: Mina<br>Second: Zalat<br>Coordinator: Christine<br>Cardiac: Atef<br>Regular OT: Zarzour, Dhahi</span></p>
+    <p class="empty" style="margin:0">Each day replaces who is on that day's morning and night shifts. Work already on those shifts is kept; anyone no longer on the shift has their tasks reassigned. New names are added to All staff.</p>
+    <label class="f">Rota<textarea id="rotaImportText" style="min-height:240px;font-family:var(--f-mono);font-size:12.5px"></textarea></label>
+    ${err ? `<p class="late" style="margin:0">${esc(err)}</p>` : ''}
+    <div class="row"><span class="spacer"></span><button type="button" class="btn" data-act="close">Cancel</button><button type="submit" class="btn primary">Import</button></div></form></div>`;
+}
+function doRotaImport() {
+  const { days, bad } = parseRota((document.getElementById('rotaImportText') || {}).value || '');
+  const dates = Object.keys(days).filter(d => Object.keys(days[d]).some(k => k !== 'team' && days[d][k].length)).sort();
+  if (!dates.length) { showRotaImport('Nothing to import. Start each day with a date line like 2026-11-15.' + (bad.length ? ' Lines not understood: ' + bad.slice(0, 8).join(', ') : '')); return; }
+  const added = []; let people = 0;
+  dates.forEach(d => { people += applyRotaDay(d, days[d], added); });
+  pointShift(); $layer.innerHTML = ''; commit();
+  toast(`Rota imported for ${dates.length} day${dates.length === 1 ? '' : 's'}${added.length ? ' · new staff: ' + added.join(', ') : ''}${bad.length ? ' · skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
 }
 function showSwap(id) {
   const d = id ? doc(id) : null; const on = new Set(S.doctors.map(x => x.id));
@@ -1748,12 +1824,13 @@ document.addEventListener('click', e => {
     if (a === 'room-del') { const d = otDay(S.date, true); const rm = realRoom(el.dataset.room); if (rm && rm.cases.length) { toast('Remove its cases first'); return; } d.rooms = d.rooms.filter(x => x !== rm); commit(); return; }
     if (a === 'rooms-copy') { const from = R.ot[el.dataset.from]; R.ot[S.date] = { rooms: from.rooms.map(x => ({ id: uid(), name: x.name, list: x.list, anaes: x.anaes, cases: [] })) }; commit(); toast('Rooms copied – add today\'s cases'); return; }
   }
-  const manage = new Set(['invite', 'priv-ask', 'priv-yes', 'pin-reset', 'hist-restore', 'hist-yes', 'fill', 'team-add', 'team-del', 'tm-del', 'sf-add', 'sf-del', 'hol-add', 'hol-del', 'reset', 'reset-yes']);
+  const manage = new Set(['rota-import', 'invite', 'priv-ask', 'priv-yes', 'pin-reset', 'hist-restore', 'hist-yes', 'fill', 'team-add', 'team-del', 'tm-del', 'sf-add', 'sf-del', 'hol-add', 'hol-del', 'reset', 'reset-yes']);
   if (manage.has(a)) { if (!canManage()) { toast('Only second on-calls can change the rota and teams'); return; } }
   else if (!canEdit() && !viewOnly.has(a)) { toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
   if (a === 'edit' && t && !canEditTask(t)) { toast("Only the second on-call can change another doctor's task"); return; }
   switch (a) {
     case 'whoami': if (sync.private && !signedIn()) { render(); break; } showWho(); break;
+    case 'rota-import': showRotaImport(); break;
     case 'invite': inviteFor(id); break;
     case 'priv-ask': ui.confirmPrivate = true; render(); break;
     case 'priv-no': ui.confirmPrivate = false; render(); break;
@@ -1966,6 +2043,7 @@ document.addEventListener('submit', e => {
     (async () => { try { await finishSignin(await rpc('oncall_invite_redeem', { p_code: sync.code, p_invite: document.getElementById('ivCode').value, p_pin: p1 })); } catch (err) { ui.signinErr = 'No connection to the team server.'; render(); } })(); }
   if (e.target.id === 'importForm') { e.preventDefault(); if (canOt()) doImport(); }
   if (e.target.id === 'noraImportForm') { e.preventDefault(); if (canOt()) doNoraImport(); }
+  if (e.target.id === 'rotaImportForm') { e.preventDefault(); if (canManage()) doRotaImport(); }
   if (e.target.id === 'cancelForm') { e.preventDefault(); if (canOt()) cancelCase(e.target.dataset.id, ((document.getElementById('cxOther') || {}).value || '').trim()); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $layer.innerHTML) { draft = null; $layer.innerHTML = ''; } });

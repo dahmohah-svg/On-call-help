@@ -30,6 +30,8 @@ One board holds the whole department. Under **Rota & teams**:
 
 The app always opens on the shift running now (at 03:00 that is the shift that started at 18:00 the evening before). Use ‹ › to look at other nights.
 
+**Import rota from text** (second on-calls): one block per day — a date line, then `Team:`, `Trainee:`, `List prep:`, `APS:`, `Assessment:`, `Emergency:`, `OBGYN:`, `Second:`, `Coordinator:`, `Cardiac:`, `Regular OT:` with names separated by commas. It sets who is on that day's morning and night shifts, adds new names to All staff, keeps existing work and logs the import.
+
 **Swaps:** on the Board a second on-call taps *Swap* on a doctor and picks who covers. Their tasks and roles move across, and every change is logged on that shift.
 **Handover:** the next shift shows a banner to carry over anything unfinished from the previous one.
 
