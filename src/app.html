@@ -156,6 +156,23 @@ select.status { border: 1px solid var(--line); background: var(--surface-2); bor
 .room.waiting { border-left-color: var(--warn); }
 .room.done { border-left-color: var(--muted); }
 .room-name { font-family: var(--f-display); font-weight: 700; font-size: 20px; letter-spacing: .03em; text-transform: uppercase; }
+.zone { display: grid; gap: 8px; }
+.zone-h { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.zone-h .empty { font-size: 13px; }
+.mtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.mtile { text-align: left; font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-top: 5px solid var(--line); border-radius: var(--r); padding: 8px 10px; display: grid; gap: 2px; align-content: start; min-width: 0; min-height: 96px; cursor: pointer; }
+.mtile .mt-n { font-family: var(--f-display); font-weight: 700; font-size: 19px; letter-spacing: .02em; text-transform: uppercase; display: flex; justify-content: space-between; gap: 6px; }
+.mtile .mt-n small { font-family: var(--f-mono); font-weight: 500; font-size: 12px; color: var(--muted); }
+.mtile .mt-s { font-size: 12px; font-weight: 700; color: var(--muted); }
+.mtile .mt-c { font-size: 13px; font-weight: 700; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.mtile .mt-a { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.mtile.running { border-top-color: var(--ok); background: color-mix(in srgb, var(--ok) 9%, var(--surface)); } .mtile.running .mt-s { color: var(--ok); }
+.mtile.waiting { border-top-color: var(--warn); background: color-mix(in srgb, var(--warn) 9%, var(--surface)); } .mtile.waiting .mt-s { color: var(--warn); }
+.mtile.done { border-top-color: var(--muted); opacity: .78; }
+.mtile.empty { border-style: dashed; border-top-style: solid; opacity: .7; }
+.mtile.help { border-color: var(--crit); border-top-color: var(--crit); background: color-mix(in srgb, var(--crit) 12%, var(--surface)); opacity: 1; } .mtile.help .mt-s { color: var(--crit); }
+.legend-m { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.legend-m i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 .rchip { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap; background: var(--surface-2); color: var(--muted); }
 .rchip.running { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
 .rchip.waiting { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
@@ -270,6 +287,7 @@ pre.handover { background: var(--bg); border: 1px solid var(--line); border-radi
   <div class="wrap">
     <nav class="tabs" role="tablist" id="tabs">
       <button role="tab" data-tab="mine" id="tabMine">My work</button>
+      <button role="tab" data-tab="map">Hospital</button>
       <button role="tab" data-tab="board">Board</button>
       <button role="tab" data-tab="plan">Coverage</button>
       <button role="tab" data-tab="timeline">Schedule</button>
@@ -728,8 +746,8 @@ function render() {
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab)));
   const mb = document.getElementById('meBtn'); mb.textContent = (meDoc() || meStaff()) ? 'Me: ' + myName() : ui.meId === 'observer' ? 'Observer' : 'Who are you?'; mb.classList.toggle('unset', !ui.meId);
   document.getElementById('tabMine').hidden = role() === 'third';
-  if (ui.tab === 'mine' && role() === 'third') ui.tab = 'board';
-  const views = { mine: viewMine, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewRooms, nora: viewNora, team: viewTeam };
+  if (ui.tab === 'mine' && role() === 'third') ui.tab = 'map';
+  const views = { mine: viewMine, map: viewMap, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewRooms, nora: viewNora, team: viewTeam };
   const needSignin = !!sync.code && sync.private && !signedIn();
   const welcome = needSignin || (!sync.code && R.example && readPref('demo') !== '1');
   document.getElementById('tabs').hidden = welcome;
@@ -975,6 +993,75 @@ function roomCard(r, cs, edit) {
         ${edit ? '<span class="spacer"></span>' + caseButtons(r.id, c) + (c.kind === 'el' ? `<button class="icon-btn" data-act="case-del" data-room="${esc(r.id)}" data-case="${c.id}" aria-label="Remove case">Remove</button>` : '') : ''}</div>`).join('') || '<p class="empty" style="margin:0">No cases yet.</p>'}
       ${edit ? `<div class="row" style="margin-top:6px"><input class="who" id="ca-${esc(r.name)}" placeholder="Case, e.g. Lap chole" style="flex:2 1 140px;padding:6px"><input class="who" id="cl-${esc(r.name)}" placeholder="Ward / bed" style="flex:1 1 90px;padding:6px"><button class="btn sm" data-act="case-add" data-room="${esc(r.id)}" data-name="${esc(r.name)}">Add</button></div>` : ''}</div>` : ''}
   </article>`;
+}
+/* ---------- Hospital overview: every place anaesthesia is working, on one screen ---------- */
+function roomZone(name) { return /^trauma/i.test(name) ? 'Trauma OT' : /^pacu|recovery/i.test(name) ? 'PACU' : /^(ot|or|main ot|theatre)\b/i.test(name) ? 'Main OT' : 'Cath lab & other'; }
+function mtile(cls, name, right, state, line, sub, attrs) {
+  return `<button class="mtile ${cls}" ${attrs}><span class="mt-n">${esc(name)}${right ? `<small>${esc(right)}</small>` : ''}</span><span class="mt-s">${esc(state)}</span>${line ? `<span class="mt-c">${esc(line)}</span>` : ''}${sub ? `<span class="mt-a">${esc(sub)}</span>` : ''}</button>`;
+}
+function viewMap() {
+  const date = S.date; const am = S.session === 'am'; const allRooms = dayRooms(date).map(r => ({ r, cs: roomCases(r) }));
+  // on-call (night / holiday): only rooms with an on-call case matter; the elective distribution is the morning's
+  const rooms = am ? allRooms : allRooms.map(x => ({ r: x.r, cs: x.cs.filter(c => c.kind === 'oc') })).filter(x => x.cs.length);
+  const idle = am ? 0 : allRooms.length - rooms.length;
+  const helpT = S.tasks.filter(t => t.status === 'help');
+  const stOf = x => roomState(x.cs); const cnt = st => rooms.filter(x => stOf(x) === st).length;
+  const live = rooms.flatMap(x => x.cs.filter(c => c.status !== 'cancelled'));
+  const nd = (am && noraDay(date)) || { team: '', cases: [] }; const nc = k => nd.cases.filter(c => c.status === k).length;
+  const openT = S.tasks.filter(t => t.status !== 'done');
+  let h = `<div class="nowbar"><b class="k">Hospital · ${esc(dayLabel(date))}</b><span><b>${cnt('running')}</b> rooms running</span><span><b>${cnt('waiting')}</b> waiting</span><span><b>${cnt('done')}</b> finished</span><span>Cases <b>${live.filter(c => c.status === 'done').length}/${live.length}</b></span>${nd.cases.length ? `<span>NORA <b>${nc('done')}/${nd.cases.length - nc('cancelled')}</b></span>` : ''}<span>On-call tasks <b>${openT.length}</b> open</span>${helpT.length ? `<span style="color:var(--crit)"><b>${helpT.length}</b> need help</span>` : ''}</div>`;
+  h += helpQueue();
+  h += `<div class="legend-m"><span><i style="background:var(--ok)"></i>Running</span><span><i style="background:var(--warn)"></i>Waiting</span><span><i style="background:var(--muted)"></i>Finished</span><span><i style="background:var(--crit)"></i>Needs help</span><span>Tap a tile to open it</span></div>`;
+  // theatres by zone
+  const order = ['Main OT', 'Cath lab & other', 'Trauma OT', 'PACU'];
+  order.forEach(z => {
+    const list = rooms.filter(x => roomZone(x.r.name) === z); if (!list.length) return;
+    const run = list.filter(x => stOf(x) === 'running').length;
+    h += `<section class="zone"><div class="zone-h"><h2>${esc(z)}</h2><span class="empty">${run} of ${list.length} running</span></div><div class="mtiles">${list.map(({ r, cs }) => {
+      const st = stOf({ cs }); const runC = cs.find(c => c.status === 'running'); const next = cs.find(c => c.status === 'waiting');
+      const liveC = cs.filter(c => c.status !== 'cancelled'); const dn = liveC.filter(c => c.status === 'done').length;
+      const help = helpT.some(t => t.theatre === r.name);
+      const state = help ? 'Needs help' : st === 'running' ? 'Running' + (runC.startedAt ? ' · ' + durTxt(minsSince(runC.startedAt)) : '') : st === 'waiting' ? (dn ? 'Between cases' : 'Not started') : st === 'done' ? 'Finished' : 'No cases';
+      const line = runC ? runC.title : next ? 'Next: ' + next.title : '';
+      const who = am ? (r.anaes || '') : [...new Set(cs.filter(c => c.status !== 'done' && c.who).map(c => c.who))].join(', ');
+      return mtile((help ? 'help ' : '') + st, r.name, liveC.length ? dn + '/' + liveC.length : '', state, line, who, `data-act="map-room" data-name="${esc(r.name)}"`);
+    }).join('')}</div></section>`;
+  });
+  if (!am) h += `<p class="empty" style="margin:0">${rooms.length ? '' : 'No on-call theatre cases right now. '}${idle} theatre${idle === 1 ? '' : 's'} idle.</p>`;
+  // NORA by area
+  if (nd.cases.length) {
+    const areas = [...new Set(nd.cases.map(c => c.area || 'Other'))];
+    h += `<section class="zone"><div class="zone-h"><h2>NORA</h2><span class="empty">${esc(nd.team || 'team not set')}</span></div><div class="mtiles">${areas.map(a => {
+      const cs = nd.cases.filter(c => (c.area || 'Other') === a); const k = s => cs.filter(c => c.status === s).length; const going = cs.find(c => c.status === 'going');
+      const tot = cs.length - k('cancelled'); const st = going ? 'running' : k('pending') ? 'waiting' : 'done';
+      return mtile(st, a, k('done') + '/' + tot, going ? 'Going' : k('pending') ? k('pending') + ' pending' : 'Finished', going ? going.proc : '', k('cancelled') ? k('cancelled') + ' cancelled' : '', `data-act="tab" data-tab="nora"`);
+    }).join('')}</div></section>`;
+  }
+  // outside duties: who covers each, and what they are doing now
+  const nr = nowRel(); const fb = S.plan && S.session !== 'am' && isFinite(nr) ? blockAt(S.plan.first, nr) : null;
+  const dutyTiles = Object.keys(DUTY).map(k => {
+    const docs = S.doctors.filter(d => d.tier === 'first' && d.duty === k && d.status !== 'off'); if (!docs.length && !S.tasks.some(t => DUTY_TYPES[k].includes(t.type))) return '';
+    const ids = new Set(docs.map(d => d.id));
+    // a task counts under its doctor's duty; unassigned (or 2nd on-call) work counts under the duty that normally takes that type
+    const dutyOf = t => { const d = doc(t.doctorId); return d && d.tier === 'first' && d.duty ? d.duty : (!inTheatre(t) && Object.keys(DUTY).find(x => DUTY_TYPES[x].includes(t.type))) || ''; };
+    const ts = S.tasks.filter(t => t.status !== 'done' && dutyOf(t) === k);
+    const help = ts.find(t => t.status === 'help'), act = ts.find(t => t.status === 'active'); const pend = ts.filter(t => t.status === 'pending').length;
+    const st = help ? 'help' : act ? 'running' : pend ? 'waiting' : 'empty';
+    const state = help ? 'Needs help' : act ? (inTheatre(act) ? 'In theatre' + (act.theatre ? ' · ' + act.theatre : '') : 'In progress') : pend ? pend + ' to do' : 'Free';
+    const cur = help || act || ts[0];
+    return mtile(st, DUTY[k], dutyPhone(k), state, cur ? (cur.title || TYPES[cur.type].label) + (cur.location ? ' · ' + cur.location : '') : '', docs.map(d => d.name).join(', ') || 'nobody assigned', `data-act="tab" data-tab="board"`);
+  }).join('');
+  if (dutyTiles) h += `<section class="zone"><div class="zone-h"><h2>Outside duties</h2>${fb ? `<span class="empty">Phone now: <b style="color:var(--fg)">${esc((doc(fb.phone) || {}).name || '—')}</b></span>` : ''}</div><div class="mtiles">${dutyTiles}</div></section>`;
+  // who is free now
+  {
+    const busy = new Set(S.tasks.filter(t => t.status === 'active' || t.status === 'help').map(t => t.doctorId));
+    const free = S.doctors.filter(d => d.tier !== 'third' && d.status === 'available' && !busy.has(d.id));
+    const tied = S.doctors.filter(d => d.tier !== 'third' && (busy.has(d.id) || d.status === 'busy'));
+    if (S.doctors.length) h += `<section class="panel"><div class="row"><h2>Free now · ${free.length}</h2><span class="spacer"></span><span class="empty">${tied.length} busy</span></div><div class="row" style="gap:6px">${free.map(d => `<span class="chip">${esc(d.name)} · ${esc(tierShort(d))}</span>`).join('') || '<span class="empty">Everyone on this shift has a case or call in progress.</span>'}</div></section>`;
+  }
+  const third = S.doctors.filter(d => d.tier === 'third'); const sec = S.doctors.filter(d => d.tier === 'second');
+  if (third.length || sec.length) h += `<p class="empty" style="margin:0">${third.length ? '3rd on-call: <b>' + esc(third.map(d => d.name).join(', ')) + '</b>' : ''}${third.length && sec.length ? ' · ' : ''}${sec.length ? '2nd on-call: <b>' + esc(sec.map(d => d.name + (d.coordinator ? ' (coord)' : '')).join(', ')) + '</b>' : ''}</p>`;
+  return h;
 }
 /* ---------- NORA: the morning non-OR anaesthesia list ---------- */
 const NORA_ST = { pending: 'Pending', going: 'Going', done: 'Done', cancelled: 'Cancelled' };
@@ -1722,7 +1809,7 @@ async function pinSubmit(id) {
 }
 function becomeMe(id) {
   ui.meId = id; writePref('meId', id); $layer.innerHTML = ''; ui.shiftDate = currentShiftDate(); pointShift();
-  const r = role(); ui.tab = junior() ? 'mine' : r === 'third' ? 'board' : (ui.tab === 'team' ? 'board' : ui.tab); writePref('tab', ui.tab);
+  const r = role(); ui.tab = junior() ? 'mine' : r === 'third' ? 'map' : (ui.tab === 'team' ? 'board' : ui.tab); writePref('tab', ui.tab);
   render(); window.scrollTo(0, 0);
 }
 async function signOut() {
@@ -1864,6 +1951,8 @@ document.addEventListener('click', e => {
     }
   }
   const otActs = new Set(['rooms-import', 'case-st', 'case-add', 'case-del', 'room-add', 'room-del', 'rooms-copy']);
+  if (a === 'map-room') { ui.openRooms = ui.openRooms || new Set(); ui.openRooms.add(el.dataset.name); ui.tab = 'ot'; writePref('tab', 'ot'); render();
+    const rn = [...document.querySelectorAll('.room-name')].find(x => x.textContent === el.dataset.name); if (rn) rn.scrollIntoView({ block: 'center' }); else window.scrollTo(0, 0); return; }
   if (a === 'room-open') { ui.openRooms = ui.openRooms || new Set(); const k = el.dataset.name; ui.openRooms.has(k) ? ui.openRooms.delete(k) : ui.openRooms.add(k); render(); return; }
   if (otActs.has(a)) {
     if (!canOt()) { toast(sync.code && meStaff() ? 'Enter your PIN to update OT rooms' : 'Choose who you are to update OT rooms'); return; }
@@ -2135,6 +2224,6 @@ setInterval(() => { if (sync.code && !document.hidden) { sync.dirty ? push() : p
 document.addEventListener('visibilitychange', () => { if (!document.hidden && sync.code) pull(false); });
 document.addEventListener('focusout', () => setTimeout(() => { if (sync.needRender && !$main.contains(document.activeElement)) { sync.needRender = false; render(); } }, 0));
 setInterval(renderSyncChip, 30000);
-setInterval(() => { if ((ui.tab === 'ot' || ui.tab === 'nora') && !draft && !document.hidden) safeRender(); }, 60000);
+setInterval(() => { if ((ui.tab === 'ot' || ui.tab === 'nora' || ui.tab === 'map') && !draft && !document.hidden) safeRender(); }, 60000);
 })();
 </script>
