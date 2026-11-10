@@ -1677,6 +1677,7 @@ function commit() { pruneShifts(); save(); render(); markDirty(); }
 document.getElementById('tabs').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]'); if (!b) return;
   ui.tab = b.dataset.tab; ui.confirmReset = false; writePref('tab', ui.tab); render(); window.scrollTo(0, 0);
+  if (ui.tab === 'team') refreshPins();   // show fresh PIN / invite state to whoever manages staff
 });
 
 document.addEventListener('click', e => {

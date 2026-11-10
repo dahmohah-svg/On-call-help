@@ -61,7 +61,8 @@ The **NORA** tab holds each morning's non-OR anaesthesia list (radiology, nuclea
 ## PINs and history
 - **Personal PIN:** the first time someone picks their name on a team board they set a 4–6 digit PIN; after that the name needs that PIN. Once anyone on the board has a PIN, only phones signed in with their own PIN can make changes, and the server records who really made each change. Five wrong tries lock the name for 15 minutes. A second or third on-call can reset someone's PIN under *Rota & teams*.
 - **History & undo:** the server keeps earlier versions of the board for 14 days (each time a different person changes it, every 10 minutes, and before anything large is deleted). A second or third on-call can restore any of them under *Rota & teams → History & undo*; the board being replaced is kept too.
-- Server side: `supabase/oncall_history_and_pins.sql`.
+- **Private board:** a second or third on-call can make the board private (*Rota & teams → Privacy*). The team link then shows only a sign-in page; staff sign in with their name and PIN. New staff (or anyone who forgot their PIN) get a one-time **Invite** code from a second or third on-call, valid 7 days. Resetting a person signs them out everywhere and wipes the copy on their phone. 10 wrong PINs lock a name for 24 hours.
+- Server side: `supabase/oncall_history_and_pins.sql`, then `supabase/oncall_private_board.sql`.
 
 ## Shared team board
 In **Team & shift → Share with the team**, one doctor taps **Create team board** and sends the link to the team chat. Everyone who opens the link sees the same board, and changes appear on other phones within a few seconds. Edits made at the same time on different phones are merged, and the app keeps working offline and syncs when signal returns.
