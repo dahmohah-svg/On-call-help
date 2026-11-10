@@ -951,7 +951,7 @@ function roomCard(r, cs, edit) {
       ${edit && next ? `<button class="btn sm ${run ? '' : 'primary'}" data-act="case-st" data-room="${esc(r.id)}" data-case="${next.id}" data-kind="${next.kind}" data-v="running">Start next</button>` : ''}
       <span class="spacer"></span><button class="icon-btn" data-act="room-open" data-name="${esc(r.name)}">${open ? 'Hide list' : 'Show list · ' + cs.length}</button></div>
     ${open ? `<div>${cs.map(c => `<div class="case-row ${c.status}"><span class="rchip ${c.status}">${CASE_ST[c.status]}</span><span class="t">${esc(c.title)}</span>${loc(c)}
-        ${c.startedAt ? `<span class="empty num">${hhmm(c.startedAt)}${c.endedAt ? '–' + hhmm(c.endedAt) + ' (' + durTxt(minsSince(c.startedAt, c.endedAt)) + ')' : ''}</span>` : ''}${c.kind === 'oc' ? '<span class="chip">On-call' + (c.who ? ' · ' + esc(c.who) : '') + '</span>' : ''}
+        ${c.notes ? `<span class="empty" style="font-size:12px">${esc(c.notes)}</span>` : ''}${c.startedAt ? `<span class="empty num">${hhmm(c.startedAt)}${c.endedAt ? '–' + hhmm(c.endedAt) + ' (' + durTxt(minsSince(c.startedAt, c.endedAt)) + ')' : ''}</span>` : ''}${c.kind === 'oc' ? '<span class="chip">On-call' + (c.who ? ' · ' + esc(c.who) : '') + '</span>' : ''}
         ${edit ? '<span class="spacer"></span>' + caseButtons(r.id, c) + (c.kind === 'el' ? `<button class="icon-btn" data-act="case-del" data-room="${esc(r.id)}" data-case="${c.id}" aria-label="Remove case">Remove</button>` : '') : ''}</div>`).join('') || '<p class="empty" style="margin:0">No cases yet.</p>'}
       ${edit ? `<div class="row" style="margin-top:6px"><input class="who" id="ca-${esc(r.name)}" placeholder="Case, e.g. Lap chole" style="flex:2 1 140px;padding:6px"><input class="who" id="cl-${esc(r.name)}" placeholder="Ward / bed" style="flex:1 1 90px;padding:6px"><button class="btn sm" data-act="case-add" data-room="${esc(r.id)}" data-name="${esc(r.name)}">Add</button></div>` : ''}</div>` : ''}
   </article>`;
@@ -1063,6 +1063,7 @@ function viewRooms() {
   const live = all.flatMap(x => x.cs.filter(c => c.status !== 'cancelled'));
   let h = `<div class="nowbar"><b class="k">OT · ${esc(dayLabel(date))}</b><span><b>${cnt('running')}</b> running</span><span><b>${cnt('waiting')}</b> waiting</span><span><b>${cnt('done')}</b> finished</span><span>Cases done <b>${live.filter(c => c.status === 'done').length}/${live.length}</b></span></div>`;
   if (!edit && meStaff() && sync.code) h += pinBanner();
+  if (edit) h += `<div class="row"><span class="spacer"></span><button class="btn sm" data-act="rooms-import">Import rooms / cases from text</button></div>`;
   h += `<div class="rooms">${all.map(({ r, cs }) => roomCard(r, cs, edit)).join('')}</div>`;
   const dis = edit ? '' : 'disabled';
   const prev = Object.keys(R.ot || {}).filter(k => k < date).sort().pop();
@@ -1073,7 +1074,7 @@ function viewRooms() {
       <td><input type="text" id="rl-${esc(r.name)}" value="${esc(r.list || '')}" data-act="room-f" data-f="list" data-room="${esc(r.id)}" ${dis} placeholder="e.g. General surgery" aria-label="List"></td>
       <td><input type="text" id="ra-${esc(r.name)}" value="${esc(r.anaes || '')}" data-act="room-f" data-f="anaes" data-room="${esc(r.id)}" ${dis} placeholder="Name(s)" aria-label="Anaesthesia"></td>
       <td>${edit ? `<button class="btn sm ghost danger" data-act="room-del" data-room="${esc(r.id)}">Remove</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
-    ${edit ? `<div class="row" style="margin-top:8px"><input class="who" id="newRoom" placeholder="New room, e.g. OR 5" style="padding:6px"><button class="btn sm" data-act="room-add">Add room</button><button class="btn sm" data-act="rooms-import">Import week from text</button>${prev ? `<button class="btn sm" data-act="rooms-copy" data-from="${prev}">Copy rooms from ${esc(dayLabel(prev))}</button>` : ''}</div>` : ''}</details>`;
+    ${edit ? `<div class="row" style="margin-top:8px"><input class="who" id="newRoom" placeholder="New room, e.g. OR 5" style="padding:6px"><button class="btn sm" data-act="room-add">Add room</button>${prev ? `<button class="btn sm" data-act="rooms-copy" data-from="${prev}">Copy rooms from ${esc(dayLabel(prev))}</button>` : ''}</div>` : ''}</details>`;
   h += `<section style="display:grid;gap:10px"><h2>On-call OT list</h2>${viewOT()}</section>`;
   return h;
 }
@@ -1084,16 +1085,23 @@ function parseDistribution(txt) {
     const l = line.trim(); if (!l || l.startsWith('#')) return;
     const dm = l.match(/^(\d{4}-\d{2}-\d{2})\b/);
     if (dm && !l.includes('|')) { cur = dm[1]; days[cur] = days[cur] || []; return; }
+    if (!cur) { bad.push(i + 1); return; }
+    if (l.startsWith('+')) {   // a case for the room above: + procedure | ward/bed | notes
+      const room = days[cur][days[cur].length - 1]; const parts = l.slice(1).split('|').map(x => x.trim());
+      if (!room || !parts[0]) { bad.push(i + 1); return; }
+      room.cases.push({ title: parts[0], location: parts[1] || '', notes: parts[2] || '' }); return;
+    }
+    if (l.startsWith('-')) { days[cur].push({ name: l.slice(1).trim(), remove: true, cases: [] }); return; }   // - Room name: remove if it has no cases
     const parts = l.split('|').map(x => x.trim());
-    if (!cur || parts.length < 2 || !parts[0]) { bad.push(i + 1); return; }
-    days[cur].push({ name: parts[0], list: parts[1] || '', anaes: parts[2] || '' });
+    if (!parts[0]) { bad.push(i + 1); return; }
+    days[cur].push({ name: parts[0], list: parts[1] || '', anaes: parts[2] || '', cases: [] });
   });
   return { days, bad };
 }
 function showImport(err) {
   $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="importForm" autocomplete="off">
     <div class="row"><h3>Import OT distribution</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
-    <p class="empty" style="margin:0">Paste the week. A date line starts each day, then one line per room:<br><span class="num">2026-11-08<br>OT 1 | Aboeloun | Abbas</span><br>Rooms already on those days keep their cases; their consultant and anaesthetist are updated.</p>
+    <p class="empty" style="margin:0">A date line starts each day, then one line per room, and optionally its cases on lines starting with +:<br><span class="num">2026-11-11<br>OT 2 | Consultant: Zarzour | Afaq<br>+ Adenoidectomy | Surgical 26-D7 | ENT · age 1</span><br>Rooms not mentioned are kept, empty fields keep what is there, and a line "- OT 14/15" removes that room if it has no cases. Never paste patient names or file numbers.</p>
     <label class="f">Distribution<textarea id="importText" style="min-height:220px;font-family:var(--f-mono);font-size:12.5px"></textarea></label>
     ${err ? `<p class="late" style="margin:0">${esc(err)}</p>` : ''}
     <div class="row"><span class="spacer"></span><button type="button" class="btn" data-act="close">Cancel</button><button type="submit" class="btn primary">Import</button></div></form></div>`;
@@ -1102,13 +1110,23 @@ function doImport() {
   const { days, bad } = parseDistribution((document.getElementById('importText') || {}).value || '');
   const dates = Object.keys(days).filter(d => days[d].length);
   if (!dates.length) { showImport('Nothing to import. Start each day with a date line like 2026-11-08.'); return; }
-  let rooms = 0;
+  let rooms = 0, cases = 0;
+  // rooms not mentioned stay; empty fields keep what is there; cases are added once
   dates.forEach(d => {
-    R.ot = R.ot || {}; const old = (R.ot[d] && R.ot[d].rooms) || [];
-    R.ot[d] = { rooms: days[d].map(x => { const o = old.find(r => r.name === x.name); rooms++; return { id: o ? o.id : uid(), name: x.name, list: x.list, anaes: x.anaes, cases: o ? o.cases : [] }; }) };
+    R.ot = R.ot || {}; const day = R.ot[d] || (R.ot[d] = { rooms: [] });   // an imported day holds only the rooms sent
+    days[d].forEach(x => {
+      const o = day.rooms.find(r => r.name.toLowerCase() === x.name.toLowerCase());
+      if (x.remove) { if (o && !o.cases.length) day.rooms = day.rooms.filter(r => r !== o); return; }
+      const room = o || { id: uid(), name: x.name, list: '', anaes: '', cases: [] }; if (!o) day.rooms.push(room); rooms++;
+      if (x.list) room.list = x.list; if (x.anaes) room.anaes = x.anaes;
+      x.cases.forEach(c => { if (room.cases.some(y => y.title === c.title && (y.location || '') === c.location && (y.notes || '') === c.notes)) return; cases++;
+        room.cases.push({ id: uid(), title: c.title, location: c.location, notes: c.notes, status: 'waiting', startedAt: null, endedAt: null, by: myName() }); });
+    });
   });
-  $layer.innerHTML = ''; ui.distOpen = false; commit();
-  toast(`Imported ${rooms} rooms over ${dates.length} day${dates.length === 1 ? '' : 's'}${bad.length ? ' – skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
+  $layer.innerHTML = ''; ui.distOpen = false;
+  if (dates.length === 1 && dates[0] !== S.date) { ui.shiftDate = sessionsOf(dates[0])[0]; pointShift(); }
+  commit();
+  toast(`Imported ${rooms} rooms${cases ? ' and ' + cases + ' cases' : ''} for ${dates.map(d => dayLabel(d)).join(', ')}${bad.length ? ' – skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
 }
 function viewOT() {
   const lp = S.doctors.filter(d => d.listPrep).map(d => d.name).join(', ') || 'not set';
@@ -1207,7 +1225,7 @@ function viewTeam() {
     <li>Tasks with a fixed doctor or start time, and tasks in progress or done, are never moved.</li></ul></section>`;
   h += viewPrivacy();
   h += viewHistory();
-  h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">${sync.code ? 'This board is shared with your department. Deleting here deletes it for everyone.' : 'Everything is saved in this browser only.'} Shifts older than 60 days are cleared automatically. App version <span class="num">bd698c5</span>. Use bed and ward, never patient names or record numbers.</p>
+  h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">${sync.code ? 'This board is shared with your department. Deleting here deletes it for everyone.' : 'Everything is saved in this browser only.'} Shifts older than 60 days are cleared automatically. App version <span class="num">e7abb88</span>. Use bed and ward, never patient names or record numbers.</p>
     <div class="row" ${canManage() ? '' : 'hidden'}>${ui.confirmReset ? `<div class="confirm">${sync.code ? 'Delete the rota, teams, staff and all shifts for everyone?' : 'Delete everything on this device?'} <button class="btn sm danger" data-act="reset-yes">Delete everything</button><button class="btn sm" data-act="reset-no">Keep</button></div>` : `<button class="btn sm danger ghost" data-act="reset">Delete everything</button>`}</div></section>`;
   return h;
 }
