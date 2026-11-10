@@ -1071,7 +1071,7 @@ function doNoraImport() {
   let n = 0, prep = 0;
   dates.forEach(d => {
     const day = noraDay(d, true); if (days[d].team != null) day.team = days[d].team;
-    days[d].cases.forEach(x => { const o = day.cases.find(c => c.proc === x.proc && c.time === x.time && c.area === x.area && (!x.loc || (c.loc || '') === x.loc));
+    days[d].cases.forEach(x => { const o = day.cases.find(c => c.proc === x.proc && c.time === x.time && c.area === x.area && (c.loc || '') === x.loc && (c.notes || '') === x.notes);
       if (o) { if (x.details.length) { o.details = mergePrep(o.details, x.details); o.prepBy = myName(); o.prepAt = new Date().toISOString(); prep++; } return; } n++;
       if (x.details.length) prep++;
       day.cases.push({ id: uid(), ...x, details: x.details.filter(([k, v]) => v), status: 'pending', reason: '', by: '', at: null, seq: day.cases.length, ...(x.details.length ? { prepBy: myName(), prepAt: new Date().toISOString() } : {}) }); });
