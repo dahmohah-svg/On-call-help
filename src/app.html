@@ -1138,6 +1138,14 @@ function doImport() {
   const { days, bad } = parseDistribution((document.getElementById('importText') || {}).value || '');
   const dates = Object.keys(days).filter(d => days[d].length);
   if (!dates.length) { showImport('Nothing to import. Start each day with a date line like 2026-11-08.'); return; }
+  const { rooms, cases, prep } = applyDistribution(days);
+  $layer.innerHTML = ''; ui.distOpen = false;
+  if (dates.length === 1 && dates[0] !== S.date) { ui.shiftDate = sessionsOf(dates[0])[0]; pointShift(); }
+  commit();
+  toast(`Imported ${rooms} rooms${cases ? ' and ' + cases + ' cases' : ''}${prep ? ' · ' + prep + ' with prepared details' : ''} for ${dates.map(d => dayLabel(d)).join(', ')}${bad.length ? ' – skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
+}
+function applyDistribution(days) {
+  const dates = Object.keys(days).filter(d => days[d].length);
   let rooms = 0, cases = 0, prep = 0;
   // rooms not mentioned stay; empty fields keep what is there; cases are added once
   dates.forEach(d => {
@@ -1153,10 +1161,7 @@ function doImport() {
         room.cases.push({ id: uid(), title: c.title, location: c.location, notes: c.notes, status: 'waiting', startedAt: null, endedAt: null, by: myName(), ...(det.length ? { details: det, prepBy: myName(), prepAt: now } : {}) }); });
     });
   });
-  $layer.innerHTML = ''; ui.distOpen = false;
-  if (dates.length === 1 && dates[0] !== S.date) { ui.shiftDate = sessionsOf(dates[0])[0]; pointShift(); }
-  commit();
-  toast(`Imported ${rooms} rooms${cases ? ' and ' + cases + ' cases' : ''}${prep ? ' · ' + prep + ' with prepared details' : ''} for ${dates.map(d => dayLabel(d)).join(', ')}${bad.length ? ' – skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
+  return { rooms, cases, prep };
 }
 function viewOT() {
   const lp = S.doctors.filter(d => d.listPrep).map(d => d.name).join(', ') || 'not set';
@@ -1181,10 +1186,11 @@ function viewTeam() {
   const today = keyDate(currentShiftDate());
   let h = exampleBanner() + viewShare();
   if (!canManage()) h += `<div class="banner"><span>Only second on-calls can change the rota, teams and staff list. You can see them here.</span></div>`;
+  else h += `<section class="panel"><div class="row"><div><h2>Week schedule</h2><p class="empty" style="margin:0">One paste fills the on-call rota, NORA teams and OT rooms with their anaesthetists for the whole week.</p></div><span class="spacer"></span><button class="btn primary" data-act="rota-import">Import week schedule</button></div></section>`;
   // rota
   const days = Array.from({ length: 21 }, (_, i) => addDays(today, i - 1));
   const teamOpts = sel => `<option value="">— no team —</option>` + R.teams.map(t => `<option value="${t.id}" ${sel === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
-  h += `<section class="panel"><div class="row"><h2>Rota</h2><span class="spacer"></span>${canManage() ? '<button class="btn sm primary" data-act="rota-import">Import rota from text</button>' : ''}<span class="empty">${st.morning ? 'Morning ' + esc(st.morningStart) + '–' + esc(st.morningEnd) + ' · ' : ''}Night ${esc(st.weekdayStart)}–${esc(st.weekdayEnd)} · Holiday ${esc(st.holidayStart)}–${esc(st.holidayStart)}</span></div>
+  h += `<section class="panel"><div class="row"><h2>Rota</h2><span class="spacer"></span>${canManage() ? '<button class="btn sm primary" data-act="rota-import">Import week schedule</button>' : ''}<span class="empty">${st.morning ? 'Morning ' + esc(st.morningStart) + '–' + esc(st.morningEnd) + ' · ' : ''}Night ${esc(st.weekdayStart)}–${esc(st.weekdayEnd)} · Holiday ${esc(st.holidayStart)}–${esc(st.holidayStart)}</span></div>
     <div class="scroll-x"><table class="team-t rota-t"><thead><tr><th>Shift</th><th>Type</th><th>Team</th><th>Changes</th><th></th></tr></thead><tbody>${days.map(dt => {
       const sh = R.shifts[dt]; const hol = isHoliday(dt, sh); const tid = sh ? sh.teamId : (R.rota[dt] || '');
       const ch = sh ? (sh.log || []).length : 0;
@@ -1320,22 +1326,30 @@ function applyRotaDay(date, d, added) {
 }
 function showRotaImport(err) {
   $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="rotaImportForm" autocomplete="off">
-    <div class="row"><h3>Import rota</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
+    <div class="row"><h3>Import week schedule</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
     <p class="empty" style="margin:0">One block per day: a date line, then one line per slot. Names separated by commas. Leave a slot out if nobody is on it.<br>
-      <span class="num">2026-11-15<br>Team: Team 3<br>Trainee: Duaa<br>List prep: Salman<br>APS: Fahad, Sdqat<br>Assessment: Nerman<br>Emergency: Raza<br>OBGYN: Mina<br>Second: Zalat<br>Coordinator: Christine<br>Cardiac: Atef<br>Regular OT: Zarzour, Dhahi<br>NORA: Dhahi – Dina, Haitham</span></p>
-    <p class="empty" style="margin:0">Each day replaces who is on that day's morning and night shifts. Work already on those shifts is kept; anyone no longer on the shift has their tasks reassigned. New names are added to All staff.</p>
-    <label class="f">Rota<textarea id="rotaImportText" style="min-height:240px;font-family:var(--f-mono);font-size:12.5px"></textarea></label>
+      <span class="num">2026-11-15<br>Team: Team 3<br>Trainee: Duaa<br>List prep: Salman<br>APS: Fahad, Sdqat<br>Assessment: Nerman<br>Emergency: Raza<br>OBGYN: Mina<br>Second: Zalat<br>Coordinator: Christine<br>Cardiac: Atef<br>Regular OT: Zarzour, Dhahi<br>NORA: Dhahi – Dina, Haitham<br>OT 1 | Fadhli | Fady<br>OT 2 | Fadhli | Maysa<br>Trauma 1 | Hany, Varun | Anusha</span></p>
+    <p class="empty" style="margin:0">Room lines are "room | consultant or list | anaesthetist(s)" and fill OT rooms. A day with only NORA or room lines leaves its shifts as they are. Otherwise each day replaces who is on that day's morning and night shifts. Work already on those shifts is kept; anyone no longer on the shift has their tasks reassigned. New names are added to All staff.</p>
+    <label class="f">Week schedule<textarea id="rotaImportText" style="min-height:240px;font-family:var(--f-mono);font-size:12.5px"></textarea></label>
     ${err ? `<p class="late" style="margin:0">${esc(err)}</p>` : ''}
     <div class="row"><span class="spacer"></span><button type="button" class="btn" data-act="close">Cancel</button><button type="submit" class="btn primary">Import</button></div></form></div>`;
 }
 function doRotaImport() {
-  const { days, bad } = parseRota((document.getElementById('rotaImportText') || {}).value || '');
+  const raw = ((document.getElementById('rotaImportText') || {}).value || '').split(/\r?\n/);
+  // lines with | (OT room) or starting with + - > (cases) belong to the OT distribution; date lines go to both
+  const isOt = l => { const t = l.trim(); return t.includes('|') || /^[+>]/.test(t) || /^-\s*\S/.test(t) && !/^[-–—_]+$/.test(t); };
+  const isDate = l => /^\d{4}-\d{2}-\d{2}\s*$/.test(l.trim());
+  const rotaTxt = raw.map(l => isOt(l) && !isDate(l) ? '' : l).join('\n'), otTxt = raw.map(l => isOt(l) || isDate(l) ? l : '').join('\n');
+  const { days, bad } = parseRota(rotaTxt); const ot = parseDistribution(otTxt);
+  const otDates = Object.keys(ot.days).filter(d => ot.days[d].length);
   const dates = Object.keys(days).filter(d => Object.keys(days[d]).some(k => k !== 'team' && days[d][k].length)).sort();
-  if (!dates.length) { showRotaImport('Nothing to import. Start each day with a date line like 2026-11-15.' + (bad.length ? ' Lines not understood: ' + bad.slice(0, 8).join(', ') : '')); return; }
+  if (!dates.length && !otDates.length) { showRotaImport('Nothing to import. Start each day with a date line like 2026-11-15.' + (bad.length ? ' Lines not understood: ' + bad.slice(0, 8).join(', ') : '')); return; }
   const added = []; let people = 0;
   dates.forEach(d => { people += applyRotaDay(d, days[d], added); });
+  const o = otDates.length ? applyDistribution(ot.days) : null;
+  const nora = dates.filter(d => days[d].nora).length;
   pointShift(); $layer.innerHTML = ''; commit();
-  toast(`Rota imported for ${dates.length} day${dates.length === 1 ? '' : 's'}${added.length ? ' · new staff: ' + added.join(', ') : ''}${bad.length ? ' · skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
+  toast(`Imported ${dates.length} day${dates.length === 1 ? '' : 's'}${nora ? ' · NORA teams ' + nora : ''}${o ? ' · OT rooms ' + o.rooms + (o.cases ? ', cases ' + o.cases : '') : ''}${added.length ? ' · new staff: ' + added.join(', ') : ''}${bad.length ? ' · skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
 }
 function showSwap(id) {
   const d = id ? doc(id) : null; const on = new Set(S.doctors.map(x => x.id));

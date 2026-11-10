@@ -57,8 +57,8 @@ The **OT rooms** tab is a live board of every operating room for the day:
 - **OT distribution** sets each day's rooms with their list/specialty and anaesthetist, and can copy the rooms from the previous day.
 Anyone signed in with their PIN can update rooms, including consultants who are not on the on-call shift.
 
-## Rota import and NORA team
-The rota import also takes a `NORA: name – names` line per day, which sets that day's NORA team. A day with only a NORA line leaves the shifts unchanged.
+## Week schedule import
+**Rota & teams → Import week schedule** takes one paste for the whole week: per day a date line, the on-call slots (`APS: Fahad`), a `NORA: name – names` line for the NORA team, and OT room lines (`OT 1 | Fadhli | Fady`) for the OT rooms and their anaesthetists. A day with only NORA or room lines leaves its shifts unchanged.
 
 ## Prepared details per case
 Every OT and NORA case can carry its preop "prepared" details (ASA, weight, comorbidities, airway, allergies, fasting, labs, consent, plan…). Tap **Prepared ✓** on a case to read them; anyone signed in can tap **+ Prep details** to add or edit them as `Key: value` lines. In any import, lines starting with `>` under a case are its details, e.g. `> ASA: 2`. Importing the same case again adds or updates its details without duplicating the case. Never enter patient names or file numbers.
