@@ -57,6 +57,9 @@ The **OT rooms** tab is a live board of every operating room for the day:
 - **OT distribution** sets each day's rooms with their list/specialty and anaesthetist, and can copy the rooms from the previous day.
 Anyone signed in with their PIN can update rooms, including consultants who are not on the on-call shift.
 
+## Prepared details per case
+Every OT and NORA case can carry its preop "prepared" details (ASA, weight, comorbidities, airway, allergies, fasting, labs, consent, plan…). Tap **Prepared ✓** on a case to read them; anyone signed in can tap **+ Prep details** to add or edit them as `Key: value` lines. In any import, lines starting with `>` under a case are its details, e.g. `> ASA: 2`. Importing the same case again adds or updates its details without duplicating the case. Never enter patient names or file numbers.
+
 ## NORA list
 The **NORA** tab holds each morning's non-OR anaesthesia list (radiology, nuclear medicine, ERCP, GI endoscopy). Cases are grouped by area with time, procedure and ward/bed. Each case is marked **Pending, Going, Done or Cancelled**; cancelling asks for the reason (common reasons in one tap, or typed). The day's team line, a summary count, a cancellations list and a copyable summary for the group chat are included. Lists are imported from text (date line, optional `Team:` line, then `time | area | procedure | ward/bed | notes`) or added case by case.
 
