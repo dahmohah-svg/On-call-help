@@ -727,10 +727,11 @@ function render() {
   document.getElementById('tabMine').hidden = role() === 'third';
   if (ui.tab === 'mine' && role() === 'third') ui.tab = 'board';
   const views = { mine: viewMine, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewRooms, nora: viewNora, team: viewTeam };
-  const welcome = !sync.code && R.example && readPref('demo') !== '1';
+  const needSignin = !!sync.code && sync.private && !signedIn();
+  const welcome = needSignin || (!sync.code && R.example && readPref('demo') !== '1');
   document.getElementById('tabs').hidden = welcome;
   ['.shiftnav', '#stats', '#meBtn'].forEach(q => { const e = document.querySelector(q); if (e) e.hidden = welcome; });
-  $main.innerHTML = welcome ? viewWelcome() : (views[ui.tab] || viewBoard)();
+  $main.innerHTML = needSignin ? viewSignin() : welcome ? viewWelcome() : (views[ui.tab] || viewBoard)();
   if (ui.tab === 'timeline') { const w = $main.querySelector('.tl-wrap'); const n = $main.querySelector('.now'); if (w && n && !w.dataset.scrolled) { w.scrollLeft = Math.max(0, n.offsetLeft - 220); w.dataset.scrolled = 1; } }
 }
 
@@ -1156,7 +1157,7 @@ function viewTeam() {
     <td><select data-act="sf-tier" data-id="${x.id}" aria-label="Grade" ${dis}>${[['third', '3rd on-call'], ['second', '2nd on-call'], ['first', '1st on-call'], ['trainee', 'Trainee']].map(([k, l]) => `<option value="${k}" ${x.tier === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
     <td style="text-align:center"><input type="checkbox" data-act="sf-obs" data-id="${x.id}" ${x.obs ? 'checked' : ''} ${x.tier !== 'first' ? 'disabled' : dis} aria-label="Usually Obs and Gyne"></td>
     <td><input type="text" id="se-${x.id}" value="${esc(x.ext)}" data-act="sf-ext" data-id="${x.id}" style="min-width:70px;width:80px" aria-label="Extension or bleep" ${dis}></td>
-    ${sync.code ? `<td>${sync.pins.has(x.id) ? `<span class="chip">Set</span>${canManage() ? ` <button class="btn sm ghost" data-act="pin-reset" data-id="${x.id}">Reset</button>` : ''}` : '<span class="empty">—</span>'}</td>` : ''}
+    ${sync.code ? `<td>${sync.pins.has(x.id) ? `<span class="chip">Set</span>${canManage() ? ` <button class="btn sm ghost" data-act="pin-reset" data-id="${x.id}">Reset</button>` : ''}` : '<span class="empty">—</span>'}${canManage() && signedIn() ? ` <button class="btn sm ghost" data-act="invite" data-id="${x.id}">Invite</button>` : ''}</td>` : ''}
     <td>${canManage() ? `<button class="btn sm danger ghost" data-act="sf-del" data-id="${x.id}">Remove</button>` : ''}</td></tr>`;
   h += `<section class="panel"><div class="row"><h2>All staff · ${R.staff.length}</h2></div>
     <div class="scroll-x"><table class="team-t"><thead><tr><th>Name</th><th>Grade</th><th>Obs/Gyne</th><th>Ext / bleep</th>${sync.code ? '<th>PIN</th>' : ''}<th></th></tr></thead><tbody>${R.staff.map(sRow).join('')}</tbody></table></div>
@@ -1188,6 +1189,7 @@ function viewTeam() {
     <li><b>First on-calls</b> post what they receive in <i>My work</i> and mark it To do, In progress, Done or Need help.</li>
     <li><b>List preparation</b> goes to the doctor ticked for list prep on that shift.</li>
     <li>Tasks with a fixed doctor or start time, and tasks in progress or done, are never moved.</li></ul></section>`;
+  h += viewPrivacy();
   h += viewHistory();
   h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">${sync.code ? 'This board is shared with your department. Deleting here deletes it for everyone.' : 'Everything is saved in this browser only.'} Shifts older than 60 days are cleared automatically. Use bed and ward, never patient names or record numbers.</p>
     <div class="row" ${canManage() ? '' : 'hidden'}>${ui.confirmReset ? `<div class="confirm">${sync.code ? 'Delete the rota, teams, staff and all shifts for everyone?' : 'Delete everything on this device?'} <button class="btn sm danger" data-act="reset-yes">Delete everything</button><button class="btn sm" data-act="reset-no">Keep</button></div>` : `<button class="btn sm danger ghost" data-act="reset">Delete everything</button>`}</div></section>`;
@@ -1317,7 +1319,7 @@ const SYNC_URL = 'https://wzezqpesoaecnmclrmaj.supabase.co';
 const SYNC_KEY = 'sb_publishable_Xc8_XxgVEh-nNM4q0Lt22w_msjuc-rC';   // publishable key: safe in the browser; the table is only reachable through team-code functions
 const sync = { code: readPref('board') || null, version: 0, base: null, dirty: false, busy: false,
   status: 'local', msg: '', updatedBy: '', updatedAt: null, joinPrefill: '', needRender: false };
-try { const p = JSON.parse(readPref('sync') || 'null'); if (p && sync.code && p.code === sync.code) Object.assign(sync, { version: p.version || 0, base: p.base || null, dirty: !!p.dirty }); } catch (e) {}
+try { const p = JSON.parse(readPref('sync') || 'null'); if (p && sync.code && p.code === sync.code) Object.assign(sync, { version: p.version || 0, base: p.base || null, dirty: !!p.dirty, private: !!p.private }); } catch (e) {}
 let pushT = null;
 // PIN sign-in on this phone for the current team board
 try { const a = JSON.parse(readPref('auth') || 'null'); if (a && a.code === sync.code) { sync.token = a.token; sync.tokenStaff = a.staff; } } catch (e) {}
@@ -1325,11 +1327,11 @@ sync.pins = new Set(); sync.locked = false;
 function saveAuth() { writePref('auth', sync.token ? JSON.stringify({ code: sync.code, token: sync.token, staff: sync.tokenStaff }) : ''); }
 async function refreshPins() {
   if (!sync.code) return;
-  try { const list = await rpc('oncall_pin_status', { p_code: sync.code }); sync.pins = new Set(list || []); sync.locked = sync.pins.size > 0; safeRender(); } catch (e) {}
+  try { const list = await rpc('oncall_pin_status2', { p_code: sync.code, p_token: sync.token || null }); sync.pins = new Set(list || []); sync.locked = sync.pins.size > 0; safeRender(); } catch (e) {}
 }
 const clone = o => JSON.parse(JSON.stringify(o));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-function persistSync() { writePref('sync', JSON.stringify({ code: sync.code, version: sync.version, base: sync.base, dirty: sync.dirty })); }
+function persistSync() { writePref('sync', JSON.stringify({ code: sync.code, version: sync.version, base: sync.base, dirty: sync.dirty, private: !!sync.private })); }
 function normCode(c) { const x = String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); return x.length >= 10 ? x.match(/.{1,4}/g).join('-') : ''; }
 function newCode() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let out = ''; crypto.getRandomValues(new Uint8Array(12)).forEach(b => out += a[b % 32]); return normCode(out); }
 function shareLink() { return location.origin + location.pathname + '?join=' + encodeURIComponent(sync.code); }
@@ -1420,6 +1422,7 @@ async function push() {
   sync.busy = true; const snap = clone(R); let again = false;
   try {
     const res = await rpc('oncall_save_board2', { p_code: sync.code, p_token: sync.token || null, p_state: snap, p_base: sync.version, p_by: myName() || null });
+    if (res.signin && sync.private) { sync.busy = false; lockedOut(); return; }
     if (res.signin) { sync.locked = true; setStatus('error', 'Enter your PIN to save'); sync.busy = false; persistSync(); refreshPins(); return; }
     if (res.ok) { sync.version = Number(res.version); sync.base = snap; sync.updatedBy = res.updated_by || myName(); sync.updatedAt = res.updated_at; sync.dirty = !same(R, snap); setStatus('live'); again = sync.dirty; }
     else if (res.missing) { setStatus('error', 'Team board not found'); }
@@ -1433,10 +1436,15 @@ async function pull(force) {
   sync.busy = true;
   try {
     let fetchIt = force;
-    if (!fetchIt) { const v = await rpc('oncall_board_version', { p_code: sync.code }); if (v == null) { setStatus('error', 'Team board not found'); return; } fetchIt = Number(v) !== sync.version; }
+    if (!fetchIt) {
+      const v = await rpc('oncall_board_version2', { p_code: sync.code, p_token: sync.token || null });
+      if (v.signin) { lockedOut(); return; } if (v.missing) { setStatus('error', 'Team board not found'); return; }
+      sync.private = !!v.private; fetchIt = Number(v.version) !== sync.version;
+    }
     if (fetchIt) {
-      const row = (await rpc('oncall_get_board', { p_code: sync.code }))[0];
-      if (!row) { setStatus('error', 'Team board not found'); return; }
+      const row = await rpc('oncall_get_board2', { p_code: sync.code, p_token: sync.token || null });
+      if (row.signin) { lockedOut(); return; } if (row.missing) { setStatus('error', 'Team board not found'); return; }
+      sync.private = !!row.private;
       if (Number(row.version) >= sync.version) {
         if (sync.dirty) mergeIn(row); else { R = migrate(row.state) || blankRoot(); pointShift(); adopt(row); save(); safeRender(); }
       }
@@ -1457,8 +1465,11 @@ async function createBoard() {
 async function joinBoard(raw) {
   const code = normCode(raw); if (!code) { toast('Enter the full team code, e.g. ABCD-EFGH-JKLM'); return; }
   try {
-    const row = (await rpc('oncall_get_board', { p_code: code }))[0];
-    if (!row) { toast('No team board with that code. Check it and try again.'); return; }
+    try { const a = JSON.parse(readPref('auth') || 'null'); if (a && a.code === code) { sync.token = a.token; sync.tokenStaff = a.staff; } else { sync.token = null; sync.tokenStaff = null; } } catch (e) {}
+    const row = await rpc('oncall_get_board2', { p_code: code, p_token: sync.token || null });
+    if (row.missing) { toast('No team board with that code. Check it and try again.'); return; }
+    if (row.signin) { sync.code = code; writePref('board', code); sync.joinPrefill = ''; sync.private = true; persistSync(); lockedOut(); return; }
+    sync.private = !!row.private;
     sync.code = code; writePref('board', code); R = migrate(row.state) || blankRoot(); ui.shiftDate = currentShiftDate(); pointShift(); adopt(row); sync.dirty = false; sync.joinPrefill = '';
     save(); persistSync(); setStatus('live'); render(); toast('Joined the team board');
     if (sync.tokenStaff && (readPref('auth') || '').indexOf(code) < 0) { sync.token = null; sync.tokenStaff = null; }
@@ -1482,7 +1493,7 @@ function viewShare() {
   return `<section class="panel"><div class="row"><h2>Team board</h2><span class="spacer"></span><span class="sync-chip ${sync.status}">${sync.status === 'live' ? 'Live' : sync.status === 'offline' ? 'Offline' : sync.status === 'error' ? esc(sync.msg) : 'Connecting…'}</span></div>
     <div class="share-box"><div class="row"><span class="code" id="codeText">${esc(sync.code)}</span><span class="spacer"></span><button class="btn sm" data-act="copy-code">Copy code</button></div>
       <div class="row" style="flex-wrap:nowrap"><input class="f" id="shareLink" readonly value="${esc(shareLink())}" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--surface);color:var(--fg)"><button class="btn sm primary" data-act="copy-link">Copy link</button></div>
-      <p class="empty" style="margin:0">Send the link to the team group chat. Anyone with the link or code can see and edit this board, so keep it inside the team and use ward and bed, never patient names or record numbers.</p></div>
+      <p class="empty" style="margin:0">${sync.private ? 'This board is private: the link alone shows nothing, and staff sign in with their name and PIN. Send the link to the team group chat. Use' : 'Send the link to the team group chat. Anyone with the link or code can see this board, so keep it inside the team and use'} ward and bed, never patient names or record numbers.</p></div>
     <div class="row"><span>On this phone you are <b>${esc(myName() || 'not chosen yet')}</b>${meDoc() ? ' (' + tierLabel(meDoc()) + ')' : ''}.</span><button class="btn sm" data-act="whoami">Change</button></div>
     <p class="empty" style="margin:0">${sync.updatedBy || sync.updatedAt ? `Last change${sync.updatedBy ? ' by ' + esc(sync.updatedBy) : ''} ${ago(sync.updatedAt)}.` : ''} Changes appear on other phones within a few seconds.</p>
     <div class="row"><button class="btn sm ghost" data-act="sync-leave">Leave team board on this device</button></div></section>`;
@@ -1560,7 +1571,61 @@ function becomeMe(id) {
 }
 async function signOut() {
   if (sync.token) { try { await rpc('oncall_sign_out', { p_code: sync.code, p_token: sync.token }); } catch (e) {} }
-  sync.token = null; sync.tokenStaff = null; saveAuth(); ui.meId = ''; writePref('meId', ''); $layer.innerHTML = ''; render(); toast('Signed out on this phone');
+  sync.token = null; sync.tokenStaff = null; saveAuth(); ui.meId = ''; writePref('meId', ''); $layer.innerHTML = '';
+  if (sync.private) { lockedOut(); toast('Signed out – this phone no longer keeps the board'); return; }
+  render(); toast('Signed out on this phone');
+}
+// a private board this phone may not read: forget the local copy and ask to sign in
+function lockedOut() {
+  sync.private = true; sync.token = null; sync.tokenStaff = null; saveAuth();
+  R = blankRoot(); sync.base = null; sync.version = 0; sync.dirty = false; ui.meId = ''; writePref('meId', ''); pointShift(); save(); persistSync();
+  setStatus('error', 'Sign in to see the board'); $layer.innerHTML = ''; render();
+}
+function signedIn() { return !!(sync.token && sync.tokenStaff); }
+function viewSignin(err) {
+  return `<section class="panel" style="max-width:560px;margin:24px auto 0"><h2>Private team board</h2>
+    <p style="margin:0">Only department staff can see this board. Sign in with your name and PIN.</p>
+    <form id="signinForm" class="grid2" autocomplete="off" style="align-items:end">
+      <label class="f">Your name, as on the rota<input id="siName" autocapitalize="words" spellcheck="false" required></label>
+      <label class="f">PIN<input id="siPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" required></label>
+      <button class="btn primary" type="submit">Sign in</button></form>
+    ${ui.signinErr ? `<p class="late" style="margin:0">${esc(ui.signinErr)}</p>` : ''}
+    <details ${ui.inviteOpen ? 'open' : ''}><summary style="cursor:pointer;font-weight:700">I have an invite code</summary>
+      <form id="inviteForm" class="grid2" autocomplete="off" style="align-items:end;margin-top:8px">
+        <label class="f">Invite code<input id="ivCode" placeholder="ABCD-EFGH" autocapitalize="characters" spellcheck="false" value="${esc(ui.invitePrefill || '')}" required></label>
+        <label class="f">Choose a PIN (4–6 digits)<input id="ivPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" required></label>
+        <label class="f">Repeat PIN<input id="ivPin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" required></label>
+        <button class="btn primary" type="submit">Start</button></form></details>
+    <p class="empty" style="margin:0">No PIN and no invite? Ask a second on-call to send you an invite. Forgot your PIN? Ask for a new invite; it sets a new PIN.</p></section>`;
+}
+async function finishSignin(res) {
+  if (!res || !res.ok) { ui.signinErr = (res && res.error) || 'That did not work.'; render(); return; }
+  sync.token = res.token; sync.tokenStaff = res.staff; saveAuth(); ui.signinErr = ''; ui.invitePrefill = ''; ui.inviteOpen = false;
+  ui.meId = res.staff; writePref('meId', res.staff); setStatus('connecting');
+  await pull(true); await refreshPins(); ui.shiftDate = currentShiftDate(); pointShift();
+  ui.tab = junior() ? 'mine' : 'board'; writePref('tab', ui.tab); render(); toast('Signed in as ' + (res.name || myName()));
+}
+async function inviteFor(id) {
+  try {
+    const res = await rpc('oncall_invite_create', { p_code: sync.code, p_token: sync.token || null, p_staff: id });
+    if (!res.ok) { toast(res.error || 'Could not make an invite'); return; }
+    const link = location.origin + location.pathname + '?join=' + encodeURIComponent(sync.code) + '&invite=' + encodeURIComponent(res.invite);
+    const msg = `On-Call Board invite for ${res.name}\nOpen: ${link}\nInvite code: ${res.invite}\nChoose your PIN when it asks. The code works once and expires in 7 days. Do not share it.`;
+    $layer.innerHTML = `<div class="overlay" data-act="close-bg"><div class="sheet"><div class="row"><h3>Invite ${esc(res.name)}</h3><span class="spacer"></span><button class="btn sm ghost" data-act="close">Close</button></div>
+      <p style="margin:0">Send this to ${esc(res.name)} only, in a private message. It works once and expires in 7 days.</p>
+      <div class="code" style="text-align:center">${esc(res.invite)}</div>
+      <pre class="handover" id="htext" tabindex="0">${esc(msg)}</pre>
+      <div class="row"><span class="spacer"></span><button class="btn primary" data-act="copy">Copy message</button></div></div></div>`;
+  } catch (e) { toast('No connection to the team server.'); }
+}
+function viewPrivacy() {
+  if (!sync.code) return '';
+  const n = sync.pins.size, total = R.staff.length;
+  return `<section class="panel"><div class="row"><h2>Privacy</h2><span class="spacer"></span><span class="rchip ${sync.private ? 'running' : 'waiting'}">${sync.private ? 'Private' : 'Open to anyone with the link'}</span></div>
+    <p style="margin:0">${sync.private ? 'Only staff signed in with their PIN can see this board. New staff need an invite from a second or third on-call (Invite button in All staff below).' : 'Right now anyone with the team link can see the board. Make it private so only signed-in staff can see it.'}</p>
+    <p class="empty" style="margin:0"><b>${n} of ${total}</b> staff have a PIN.${!sync.private && n < total ? ' Staff without a PIN will need an invite once the board is private, so send invites first or ask everyone to set their PIN now.' : ''}</p>
+    ${canManage() && signedIn() ? `<div class="row">${ui.confirmPrivate ? `<span class="confirm">${sync.private ? 'Open the board to anyone with the link?' : `Make the board private now? ${total - n} staff without a PIN will need an invite.`} <button class="btn sm danger" data-act="priv-yes">${sync.private ? 'Open it' : 'Make private'}</button><button class="btn sm" data-act="priv-no">Not now</button></span>` : `<button class="btn ${sync.private ? '' : 'primary'}" data-act="priv-ask">${sync.private ? 'Turn privacy off' : 'Make board private'}</button>`}</div>`
+      : `<p class="empty" style="margin:0">A second or third on-call signed in with their PIN can change this.</p>`}</section>`;
 }
 function pinBanner() {
   if (!sync.code || !meStaff() || (sync.token && sync.tokenStaff === ui.meId)) return '';
@@ -1586,7 +1651,7 @@ function showWho() {
     <p class="empty" style="margin:0">Pick your name once. The app then shows your own work on every shift you are rostered on. ● = on the shift you are viewing.</p>
     ${grp('Third on-call · overseeing', D.filter(d => d.tier === 'third'))}${grp('Second on-call', D.filter(d => d.tier === 'second'))}${grp('First on-call', D.filter(d => d.tier === 'first' && !d.obs))}${grp('First on-call · OB/GYN', D.filter(d => d.obs))}${grp('Trainee', D.filter(d => d.tier === 'trainee'))}
     ${D.length ? '' : '<p class="empty">No staff added yet. Add them under Rota &amp; teams first.</p>'}
-    <div class="who-list"><button class="btn" data-act="setme" data-id="observer" aria-pressed="${ui.meId === 'observer'}">Just watching (read-only)</button>${sync.token ? '<button class="btn" data-act="signout">Sign out on this phone</button>' : ''}</div>
+    <div class="who-list">${sync.private ? '' : `<button class="btn" data-act="setme" data-id="observer" aria-pressed="${ui.meId === 'observer'}">Just watching (read-only)</button>`}${sync.token ? '<button class="btn" data-act="signout">Sign out on this phone</button>' : ''}</div>
     ${sync.code && sync.locked ? '<p class="empty" style="margin:0">You will be asked for your PIN.</p>' : ''}</div></div>`;
 }
 function setTaskStatus(t, v) {
@@ -1619,7 +1684,7 @@ document.addEventListener('click', e => {
   const a = el.dataset.act; const id = el.dataset.id;
   if (a === 'close-bg' && e.target !== el) return;
   const t = id ? S.tasks.find(x => x.id === id) : null;
-  const viewOnly = new Set(['signout', 'pin-open', 'hist-load', 'hist-no', 'demo', 'welcome', 'tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
+  const viewOnly = new Set(['priv-no', 'signout', 'pin-open', 'hist-load', 'hist-no', 'demo', 'welcome', 'tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
   if (a === 'nora-copy') { showText('NORA summary', noraText()); return; }
   const noraActs = new Set(['nora-st', 'nora-add', 'nora-del', 'nora-import', 'cx-pick']);
   if (noraActs.has(a)) {
@@ -1666,12 +1731,21 @@ document.addEventListener('click', e => {
     if (a === 'room-del') { const d = otDay(S.date, true); const rm = realRoom(el.dataset.room); if (rm && rm.cases.length) { toast('Remove its cases first'); return; } d.rooms = d.rooms.filter(x => x !== rm); commit(); return; }
     if (a === 'rooms-copy') { const from = R.ot[el.dataset.from]; R.ot[S.date] = { rooms: from.rooms.map(x => ({ id: uid(), name: x.name, list: x.list, anaes: x.anaes, cases: [] })) }; commit(); toast('Rooms copied – add today\'s cases'); return; }
   }
-  const manage = new Set(['pin-reset', 'hist-restore', 'hist-yes', 'fill', 'team-add', 'team-del', 'tm-del', 'sf-add', 'sf-del', 'hol-add', 'hol-del', 'reset', 'reset-yes']);
+  const manage = new Set(['invite', 'priv-ask', 'priv-yes', 'pin-reset', 'hist-restore', 'hist-yes', 'fill', 'team-add', 'team-del', 'tm-del', 'sf-add', 'sf-del', 'hol-add', 'hol-del', 'reset', 'reset-yes']);
   if (manage.has(a)) { if (!canManage()) { toast('Only second on-calls can change the rota and teams'); return; } }
   else if (!canEdit() && !viewOnly.has(a)) { toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
   if (a === 'edit' && t && !canEditTask(t)) { toast("Only the second on-call can change another doctor's task"); return; }
   switch (a) {
-    case 'whoami': showWho(); break;
+    case 'whoami': if (sync.private && !signedIn()) { render(); break; } showWho(); break;
+    case 'invite': inviteFor(id); break;
+    case 'priv-ask': ui.confirmPrivate = true; render(); break;
+    case 'priv-no': ui.confirmPrivate = false; render(); break;
+    case 'priv-yes': {
+      (async () => { try { const res = await rpc('oncall_set_private', { p_code: sync.code, p_token: sync.token || null, p_on: !sync.private });
+        ui.confirmPrivate = false; if (!res.ok) { toast(res.error); render(); return; } sync.private = !!res.private; render();
+        toast(sync.private ? 'Board is now private' : 'Board is open to anyone with the link'); } catch (e) { toast('No connection to the team server.'); } })();
+      break;
+    }
     case 'demo': writePref('demo', '1'); ui.tab = 'board'; render(); toast('Demo – sample names only'); break;
     case 'welcome': writePref('demo', '0'); render(); window.scrollTo(0, 0); break;
     case 'tab': ui.tab = el.dataset.tab; writePref('tab', ui.tab); render(); window.scrollTo(0, 0); break;
@@ -1735,13 +1809,13 @@ document.addEventListener('click', e => {
         toast(res.ok ? `PIN reset for ${(staffOf(id) || {}).name} – they set a new one next time` : res.error); await refreshPins(); } catch (e) { toast('No connection to the team server.'); } })();
       break;
     }
-    case 'hist-load': (async () => { try { ui.hist = await rpc('oncall_history_list', { p_code: sync.code }); ui.histConfirm = null; render(); } catch (e) { toast('No connection to the team server.'); } })(); break;
+    case 'hist-load': (async () => { try { ui.hist = await rpc('oncall_history_list2', { p_code: sync.code, p_token: sync.token || null }); ui.histConfirm = null; render(); } catch (e) { toast('No connection to the team server.'); } })(); break;
     case 'hist-restore': ui.histConfirm = Number(el.dataset.hid); render(); break;
     case 'hist-no': ui.histConfirm = null; render(); break;
     case 'hist-yes': {
       (async () => { try { const res = await rpc('oncall_history_restore', { p_code: sync.code, p_token: sync.token || null, p_id: Number(el.dataset.hid) });
         if (!res.ok) { toast(res.error || 'Could not restore'); return; }
-        sync.dirty = false; ui.histConfirm = null; await pull(true); ui.hist = await rpc('oncall_history_list', { p_code: sync.code }); render(); toast('Board restored'); } catch (e) { toast('No connection to the team server.'); } })();
+        sync.dirty = false; ui.histConfirm = null; await pull(true); ui.hist = await rpc('oncall_history_list2', { p_code: sync.code, p_token: sync.token || null }); render(); toast('Board restored'); } catch (e) { toast('No connection to the team server.'); } })();
       break;
     }
     case 'setst': setTaskStatus(t, el.dataset.v); break;
@@ -1867,6 +1941,12 @@ document.addEventListener('change', e => {
 document.addEventListener('submit', e => {
   if (e.target.id === 'taskForm') { e.preventDefault(); commitDraft(); }
   if (e.target.id === 'pinForm') { e.preventDefault(); pinSubmit(e.target.dataset.id); }
+  if (e.target.id === 'signinForm') { e.preventDefault(); (async () => { try { await finishSignin(await rpc('oncall_signin', { p_code: sync.code, p_name: document.getElementById('siName').value, p_pin: document.getElementById('siPin').value })); } catch (err) { ui.signinErr = 'No connection to the team server.'; render(); } })(); }
+  if (e.target.id === 'inviteForm') { e.preventDefault();
+    const p1 = document.getElementById('ivPin').value, p2 = document.getElementById('ivPin2').value; ui.inviteOpen = true;
+    if (!/^[0-9]{4,6}$/.test(p1)) { ui.signinErr = 'Use 4 to 6 digits for your PIN.'; render(); return; }
+    if (p1 !== p2) { ui.signinErr = 'The two PINs do not match.'; render(); return; }
+    (async () => { try { await finishSignin(await rpc('oncall_invite_redeem', { p_code: sync.code, p_invite: document.getElementById('ivCode').value, p_pin: p1 })); } catch (err) { ui.signinErr = 'No connection to the team server.'; render(); } })(); }
   if (e.target.id === 'importForm') { e.preventDefault(); if (canOt()) doImport(); }
   if (e.target.id === 'noraImportForm') { e.preventDefault(); if (canOt()) doNoraImport(); }
   if (e.target.id === 'cancelForm') { e.preventDefault(); if (canOt()) cancelCase(e.target.dataset.id, ((document.getElementById('cxOther') || {}).value || '').trim()); }
@@ -1878,6 +1958,7 @@ R = migrate(load()) || example();
 ui.shiftDate = currentShiftDate(); pointShift();
 if (R.example) save();
 // ?join=CODE link from the team chat
+(() => { try { const iv = new URLSearchParams(location.search).get('invite'); if (iv) { ui.invitePrefill = iv; ui.inviteOpen = true; } } catch (e) {} })();
 (() => { try { const q = new URLSearchParams(location.search).get('join'); if (!q) return; history.replaceState(null, '', location.pathname + location.hash);
   const c = normCode(q); if (!c || c === sync.code) return; if (!sync.code) { joinBoard(c); } else { sync.joinPrefill = c; ui.tab = 'team'; toast('You are on another team board. Leave it first to join this one.'); } } catch (e) {} })();
 if (ui.meId && ui.meId !== 'observer' && !staffOf(ui.meId)) ui.meId = '';
