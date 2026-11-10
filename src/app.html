@@ -1262,7 +1262,7 @@ function viewTeam() {
 /* ---------- import a week's on-call rota from text ---------- */
 // one block per day: a date line, then "Slot: name, name" lines (slot names as on the department rota)
 const ROTA_SLOTS = [
-  [/^teams?$/, 'team'], [/^trainees?( on-?call)?$/, 'trainee'], [/^list( prep(aration)?)?$/, 'list'],
+  [/^teams?$/, 'team'], [/^nora( team)?$/, 'nora'], [/^trainees?( on-?call)?$/, 'trainee'], [/^list( prep(aration)?)?$/, 'list'],
   [/^(aps|aps.*trauma.*|aps.*code.*)$/, 'aps'], [/^(assessment|preop|pre-?op assessment)$/, 'pre'], [/^(emergency( call)?s?|em)$/, 'em'],
   [/^(ob\/?gyn|obs|obgyn|obs ?& ?gyne?|obstetrics?)$/, 'obs'], [/^(second|2nd|second on-?call|2nd on-?call)$/, 'second'],
   [/^(coordinator|team coordinator|coord)$/, 'coord'], [/^(cardiac|cardiac an(a)?esthesia)$/, 'cardiac'], [/^(regular ot|regular|third ot|ot)$/, 'ot'],
@@ -1277,7 +1277,7 @@ function parseRota(txt) {
     const key = m[1].trim().toLowerCase(); const slot = (ROTA_SLOTS.find(([re]) => re.test(key)) || [])[1];
     if (!slot) { bad.push(i + 1); return; }
     const names = m[2].split(/[,،;\/]+/).map(x => x.trim()).filter(x => x && !/^[-–—_]+$/.test(x));
-    if (slot === 'team') days[cur].team = m[2].trim(); else days[cur][slot] = (days[cur][slot] || []).concat(names);
+    if (slot === 'team' || slot === 'nora') days[cur][slot] = m[2].trim(); else days[cur][slot] = (days[cur][slot] || []).concat(names);
   });
   return { days, bad };
 }
@@ -1301,8 +1301,10 @@ function applyRotaDay(date, d, added) {
     return { id: sf.id, name: sf.name, tier, duty: tier === 'first' ? p.duty : '', obs: p.duty === 'obs', thirdRole: tier === 'third' ? p.thirdRole : '',
       coordinator: p.coordinator && tier === 'second', listPrep: p.listPrep, ext: sf.ext || '', status: 'available' };
   });
+  if (d.nora) noraDay(date, true).team = d.nora;
   const team = d.team ? R.teams.find(t => t.name.trim().toLowerCase() === d.team.trim().toLowerCase()) : null;
   if (team) R.rota[date] = team.id;
+  if (!people.size) return 0;   // a day with only a team or NORA line leaves the shifts as they are
   for (const key of sessionsOf(date)) {
     const sh = ensureShift(key); const keep = new Map(sh.doctors.map(x => [x.id, x]));
     let list = docs.map(x => Object.assign({}, x));
@@ -1320,7 +1322,7 @@ function showRotaImport(err) {
   $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="rotaImportForm" autocomplete="off">
     <div class="row"><h3>Import rota</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
     <p class="empty" style="margin:0">One block per day: a date line, then one line per slot. Names separated by commas. Leave a slot out if nobody is on it.<br>
-      <span class="num">2026-11-15<br>Team: Team 3<br>Trainee: Duaa<br>List prep: Salman<br>APS: Fahad, Sdqat<br>Assessment: Nerman<br>Emergency: Raza<br>OBGYN: Mina<br>Second: Zalat<br>Coordinator: Christine<br>Cardiac: Atef<br>Regular OT: Zarzour, Dhahi</span></p>
+      <span class="num">2026-11-15<br>Team: Team 3<br>Trainee: Duaa<br>List prep: Salman<br>APS: Fahad, Sdqat<br>Assessment: Nerman<br>Emergency: Raza<br>OBGYN: Mina<br>Second: Zalat<br>Coordinator: Christine<br>Cardiac: Atef<br>Regular OT: Zarzour, Dhahi<br>NORA: Dhahi – Dina, Haitham</span></p>
     <p class="empty" style="margin:0">Each day replaces who is on that day's morning and night shifts. Work already on those shifts is kept; anyone no longer on the shift has their tasks reassigned. New names are added to All staff.</p>
     <label class="f">Rota<textarea id="rotaImportText" style="min-height:240px;font-family:var(--f-mono);font-size:12.5px"></textarea></label>
     ${err ? `<p class="late" style="margin:0">${esc(err)}</p>` : ''}
