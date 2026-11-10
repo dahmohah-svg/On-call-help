@@ -179,6 +179,15 @@ select.status { border: 1px solid var(--line); background: var(--surface-2); bor
 .case-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
 .case-row .t { font-weight: 700; overflow-wrap: anywhere; }
 .case-row.done .t, .case-row.cancelled .t { color: var(--muted); }
+.nora-case { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 6px; min-width: 0; }
+.nora-case.going { border-left-color: var(--ok); } .nora-case.pending { border-left-color: var(--warn); }
+.nora-case.done { border-left-color: var(--muted); opacity: .75; } .nora-case.cancelled { border-left-color: var(--crit); opacity: .8; }
+.nora-case .p { font-weight: 700; overflow-wrap: anywhere; }
+.nora-st { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.nora-st button { border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; padding: 8px 4px; font-weight: 700; font-size: 13px; }
+.nora-st button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.nora-st button.cx[aria-pressed="true"] { background: var(--crit); border-color: var(--crit); color: #fff; }
+.reason { font-size: 13px; color: var(--crit); font-weight: 700; }
 .log { font-size: 12.5px; color: var(--muted); display: grid; gap: 2px; margin: 0; padding-left: 16px; }
 details.done-list summary { cursor: pointer; font-weight: 700; color: var(--muted); font-size: 13px; padding: 4px 0; }
 .task.done { opacity: .5; }
@@ -279,6 +288,7 @@ pre.handover { background: var(--bg); border: 1px solid var(--line); border-radi
       <button role="tab" data-tab="timeline">Schedule</button>
       <button role="tab" data-tab="tasks">Tasks</button>
       <button role="tab" data-tab="ot">OT rooms</button>
+      <button role="tab" data-tab="nora">NORA</button>
       <button role="tab" data-tab="team">Rota &amp; teams</button>
     </nav>
   </div>
@@ -334,7 +344,7 @@ function writePref(k, v) { try { localStorage.setItem('oncall-pref-' + k, v); } 
 function todayISO() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
 const DEF_SETTINGS = () => ({ morning: true, morningStart: '07:30', morningEnd: '14:00', weekdayStart: '18:00', weekdayEnd: '07:30', holidayStart: '08:00', weekend: [5, 6], holidays: [], dutyPhones: { aps: '', pre: '69050757', em: '51680910', obs: '69621821' }, theatres: ['Main OT 1', 'Main OT 2', 'Emergency OT', 'Obstetric OT'] });
-function blankRoot() { return { v: 2, example: false, settings: DEF_SETTINGS(), staff: [], teams: [], rota: {}, shifts: {}, ot: {} }; }
+function blankRoot() { return { v: 2, example: false, settings: DEF_SETTINGS(), staff: [], teams: [], rota: {}, shifts: {}, ot: {}, nora: {} }; }
 function starterRoot() {
   const r = blankRoot();
   const sf = (name, tier, obs) => ({ id: uid(), name, tier, obs: !!obs, ext: '' });
@@ -516,7 +526,7 @@ function applyTeamToShift(sh, teamId) {
   sh.tasks.forEach(t => { if (t.doctorId && !ids.has(t.doctorId)) { t.doctorId = null; t.fixDoctor = false; t.fixStart = false; if (t.status === 'pending') t.start = null; } });
   const prevS = S; S = sh; autoSchedule(); S = prevS;
 }
-function pruneShifts() { const cut = addDays(todayISO(), -60); Object.keys(R.ot || {}).forEach(k => { if (k < cut) delete R.ot[k]; }); Object.keys(R.shifts).forEach(k => { if (k < cut) delete R.shifts[k]; }); Object.keys(R.rota).forEach(k => { if (k < cut) delete R.rota[k]; }); }
+function pruneShifts() { const cut = addDays(todayISO(), -60); Object.keys(R.nora || {}).forEach(k => { if (k < cut) delete R.nora[k]; }); Object.keys(R.ot || {}).forEach(k => { if (k < cut) delete R.ot[k]; }); Object.keys(R.shifts).forEach(k => { if (k < cut) delete R.shifts[k]; }); Object.keys(R.rota).forEach(k => { if (k < cut) delete R.rota[k]; }); }
 
 /* ---------- time helpers (minutes from shift start) ---------- */
 function hm2abs(hm) { if (!hm || !/^\d{1,2}:\d{2}$/.test(hm)) return null; const [h, m] = hm.split(':').map(Number); return h * 60 + m; }
@@ -732,7 +742,7 @@ function render() {
   const mb = document.getElementById('meBtn'); mb.textContent = (meDoc() || meStaff()) ? 'Me: ' + myName() : ui.meId === 'observer' ? 'Observer' : 'Who are you?'; mb.classList.toggle('unset', !ui.meId);
   document.getElementById('tabMine').hidden = role() === 'third';
   if (ui.tab === 'mine' && role() === 'third') ui.tab = 'board';
-  const views = { mine: viewMine, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewRooms, team: viewTeam };
+  const views = { mine: viewMine, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewRooms, nora: viewNora, team: viewTeam };
   const welcome = !sync.code && R.example && readPref('demo') !== '1';
   document.getElementById('tabs').hidden = welcome;
   ['.shiftnav', '#stats', '#meBtn'].forEach(q => { const e = document.querySelector(q); if (e) e.hidden = welcome; });
@@ -944,6 +954,106 @@ function roomCard(r, cs, edit) {
         ${edit ? '<span class="spacer"></span>' + caseButtons(r.id, c) + (c.kind === 'el' ? `<button class="icon-btn" data-act="case-del" data-room="${esc(r.id)}" data-case="${c.id}" aria-label="Remove case">Remove</button>` : '') : ''}</div>`).join('') || '<p class="empty" style="margin:0">No cases yet.</p>'}
       ${edit ? `<div class="row" style="margin-top:6px"><input class="who" id="ca-${esc(r.name)}" placeholder="Case, e.g. Lap chole" style="flex:2 1 140px;padding:6px"><input class="who" id="cl-${esc(r.name)}" placeholder="Ward / bed" style="flex:1 1 90px;padding:6px"><button class="btn sm" data-act="case-add" data-room="${esc(r.id)}" data-name="${esc(r.name)}">Add</button></div>` : ''}</div>` : ''}
   </article>`;
+}
+/* ---------- NORA: the morning non-OR anaesthesia list ---------- */
+const NORA_ST = { pending: 'Pending', going: 'Going', done: 'Done', cancelled: 'Cancelled' };
+const CANCEL_REASONS = ['Patient not fasting', 'No consent', 'Patient unfit / unwell', 'Postponed by the requesting team', 'Investigations not ready', 'Patient refused', 'Equipment or room not available', 'No bed / ICU bed', 'Time ran out'];
+function noraDay(date, create) { R.nora = R.nora || {}; let d = R.nora[date]; if (!d && create) d = R.nora[date] = { team: '', cases: [] }; return d; }
+function noraSort(a, b) { return (a.time || '99:99').localeCompare(b.time || '99:99') || (a.seq || 0) - (b.seq || 0); }
+function viewNora() {
+  const date = S.date; const day = noraDay(date) || { team: '', cases: [] }; const edit = canOt();
+  const cs = day.cases.slice().sort(noraSort);
+  const n = k => cs.filter(c => c.status === k).length;
+  let h = `<div class="nowbar"><b class="k">NORA · ${esc(dayLabel(date))}</b><span><b>${n('pending')}</b> pending</span><span><b>${n('going')}</b> going</span><span><b>${n('done')}</b> done</span><span><b>${n('cancelled')}</b> cancelled</span></div>`;
+  if (!edit && meStaff() && sync.code) h += pinBanner();
+  h += `<section class="panel"><div class="row"><h2>NORA team</h2></div>${edit ? `<input class="who" id="noraTeam" data-act="nora-team" value="${esc(day.team || '')}" placeholder="e.g. Dhahi – Dina, Haitham, Jahangir, Hossam" style="padding:7px;width:100%;max-width:none">` : `<p style="margin:0">${esc(day.team || 'Not set')}</p>`}
+    <p class="empty" style="margin:0">Radiology, nuclear medicine, ERCP and GI endoscopy · ${esc(R.settings.morningStart)}–${esc(R.settings.morningEnd)}</p></section>`;
+  if (!cs.length) h += `<p class="empty">No NORA list for this day yet.${edit ? ' Import the list below, or add cases one by one.' : ''}</p>`;
+  const areas = [...new Set(cs.map(c => c.area || 'Other'))];
+  areas.forEach(a => {
+    const list = cs.filter(c => (c.area || 'Other') === a);
+    h += `<section style="display:grid;gap:8px"><h2>${esc(a)} · ${list.filter(c => c.status === 'done').length}/${list.filter(c => c.status !== 'cancelled').length} done</h2>${list.map(c => `<article class="nora-case ${c.status}">
+      <div class="row" style="gap:4px 10px">${c.time ? `<b class="num">${esc(c.time)}</b>` : ''}<span class="p">${esc(c.proc || 'Procedure')}</span>${c.loc ? `<span class="empty">${esc(c.loc)}</span>` : ''}<span class="spacer"></span><span class="rchip ${c.status === 'going' ? 'running' : c.status === 'pending' ? 'waiting' : c.status}">${NORA_ST[c.status]}</span></div>
+      ${c.notes ? `<div class="empty">${esc(c.notes)}</div>` : ''}
+      ${c.status === 'cancelled' ? `<div class="reason">Reason: ${esc(c.reason || 'not given')}</div>` : ''}
+      ${c.by ? `<div class="empty" style="font-size:12px">${esc(NORA_ST[c.status])} · ${esc(c.by)}${c.at ? ' · ' + hhmm(c.at) : ''}</div>` : ''}
+      ${edit ? `<div class="nora-st">${Object.entries(NORA_ST).map(([k, v]) => `<button class="${k === 'cancelled' ? 'cx' : ''}" aria-pressed="${c.status === k}" data-act="nora-st" data-id="${c.id}" data-v="${k}">${v}</button>`).join('')}</div>
+        <div class="row"><span class="spacer"></span><button class="icon-btn" data-act="nora-del" data-id="${c.id}">Remove</button></div>` : ''}</article>`).join('')}</section>`;
+  });
+  const cancelled = cs.filter(c => c.status === 'cancelled');
+  if (cancelled.length) h += `<section class="panel"><h2>Cancellations · ${cancelled.length}</h2><ul class="log" style="color:var(--fg)">${cancelled.map(c => `<li>${esc(c.time ? c.time + ' ' : '')}${esc(c.proc)}${c.area ? ' (' + esc(c.area) + ')' : ''}: <b>${esc(c.reason || 'no reason given')}</b></li>`).join('')}</ul></section>`;
+  if (edit) h += `<section class="panel"><h2>Add a case</h2><div class="grid2">
+      <label class="f">Time<input type="time" id="nTime"></label>
+      <label class="f">Area<input id="nArea" list="noraAreas" placeholder="e.g. MRI"><datalist id="noraAreas">${['Radiology', 'MRI', 'CT', 'Interventional radiology', 'Nuclear medicine', 'ERCP', 'GI endoscopy', 'Cardiology'].concat(areas).map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>
+      <label class="f">Procedure<input id="nProc" placeholder="e.g. MRI brain, GA"></label>
+      <label class="f">Ward / bed<input id="nLoc" placeholder="e.g. Ward 6, bed 3"></label></div>
+      <label class="f">Notes<input id="nNotes" placeholder="Airway, fasting, allergies…"></label>
+      <div class="row"><button class="btn primary" data-act="nora-add">Add case</button><span class="spacer"></span><button class="btn" data-act="nora-import">Import list from text</button></div></section>`;
+  h += `<div class="row"><button class="btn" data-act="nora-copy">Copy NORA summary for the group chat</button></div>`;
+  return h;
+}
+function noraText() {
+  const day = noraDay(S.date) || { team: '', cases: [] }; const cs = day.cases.slice().sort(noraSort);
+  let out = `NORA · ${dayLabel(S.date)}${day.team ? '\nTeam: ' + day.team : ''}\n`;
+  [...new Set(cs.map(c => c.area || 'Other'))].forEach(a => {
+    out += `\n${a}\n` + cs.filter(c => (c.area || 'Other') === a).map(c => `  ${c.time || '--:--'}  ${c.proc}${c.loc ? ' (' + c.loc + ')' : ''} · ${NORA_ST[c.status].toUpperCase()}${c.status === 'cancelled' ? ' – ' + (c.reason || 'no reason') : ''}`).join('\n') + '\n';
+  });
+  const n = k => cs.filter(c => c.status === k).length;
+  return out + `\nDone ${n('done')} · Going ${n('going')} · Pending ${n('pending')} · Cancelled ${n('cancelled')}`;
+}
+function showCancel(id, err) {
+  const c = (noraDay(S.date) || { cases: [] }).cases.find(x => x.id === id); if (!c) return;
+  $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="cancelForm" data-id="${c.id}">
+    <div class="row"><h3>Cancel case</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
+    <p style="margin:0"><b>${esc(c.proc)}</b>${c.area ? ' · ' + esc(c.area) : ''}${c.time ? ' · ' + esc(c.time) : ''}</p>
+    <div class="who-list">${CANCEL_REASONS.map(r => `<button type="button" class="btn" data-act="cx-pick" data-r="${esc(r)}">${esc(r)}</button>`).join('')}</div>
+    <label class="f">Or write the reason<input id="cxOther" placeholder="Reason for cancellation"></label>
+    ${err ? `<p class="late" style="margin:0">${esc(err)}</p>` : ''}
+    <div class="row"><span class="spacer"></span><button type="button" class="btn" data-act="close">Back</button><button type="submit" class="btn danger">Cancel case</button></div></form></div>`;
+}
+function cancelCase(id, reason) {
+  const c = (noraDay(S.date) || { cases: [] }).cases.find(x => x.id === id); if (!c) return;
+  if (!reason) { showCancel(id, 'Choose or write a reason.'); return; }
+  c.status = 'cancelled'; c.reason = reason; c.by = myName(); c.at = new Date().toISOString();
+  $layer.innerHTML = ''; commit(); toast('Cancelled – ' + reason);
+}
+// paste format: date line (2026-11-10), then: time | area | procedure | ward/bed | notes  (time optional)
+function parseNora(txt) {
+  const days = {}; let cur = null; const bad = [];
+  txt.split(/\r?\n/).forEach((line, i) => {
+    const l = line.trim(); if (!l || l.startsWith('#')) return;
+    const dm = l.match(/^(\d{4}-\d{2}-\d{2})\b/);
+    if (dm && !l.includes('|')) { cur = dm[1]; days[cur] = days[cur] || { team: null, cases: [] }; return; }
+    if (cur && /^team\s*[:|]/i.test(l)) { days[cur].team = l.replace(/^team\s*[:|]\s*/i, ''); return; }
+    let parts = l.split('|').map(x => x.trim());
+    if (!cur || parts.length < 2) { bad.push(i + 1); return; }
+    let time = ''; if (/^\d{1,2}[:.]\d{2}$/.test(parts[0])) { time = parts[0].replace('.', ':').padStart(5, '0'); parts = parts.slice(1); } else if (parts[0] === '') parts = parts.slice(1);
+    if (parts.length < 2 || !parts[1]) { bad.push(i + 1); return; }
+    days[cur].cases.push({ time, area: parts[0], proc: parts[1], loc: parts[2] || '', notes: parts[3] || '' });
+  });
+  return { days, bad };
+}
+function showNoraImport(err) {
+  $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="noraImportForm" autocomplete="off">
+    <div class="row"><h3>Import NORA list</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
+    <p class="empty" style="margin:0">A date line, an optional team line, then one line per case:<br><span class="num">2026-11-10<br>Team: Dhahi – Dina, Haitham<br>08:00 | MRI | MRI brain, GA | Ward 6, bed 3 | difficult airway</span><br>Cases already on that day are kept; new ones are added.</p>
+    <label class="f">List<textarea id="noraImportText" style="min-height:220px;font-family:var(--f-mono);font-size:12.5px"></textarea></label>
+    ${err ? `<p class="late" style="margin:0">${esc(err)}</p>` : ''}
+    <div class="row"><span class="spacer"></span><button type="button" class="btn" data-act="close">Cancel</button><button type="submit" class="btn primary">Import</button></div></form></div>`;
+}
+function doNoraImport() {
+  const { days, bad } = parseNora((document.getElementById('noraImportText') || {}).value || '');
+  const dates = Object.keys(days).filter(d => days[d].cases.length || days[d].team);
+  if (!dates.length) { showNoraImport('Nothing to import. Start with a date line like 2026-11-10.'); return; }
+  let n = 0;
+  dates.forEach(d => {
+    const day = noraDay(d, true); if (days[d].team != null) day.team = days[d].team;
+    days[d].cases.forEach(x => { if (day.cases.some(c => c.proc === x.proc && c.time === x.time && c.area === x.area)) return; n++;
+      day.cases.push({ id: uid(), ...x, status: 'pending', reason: '', by: '', at: null, seq: day.cases.length }); });
+  });
+  $layer.innerHTML = '';
+  if (dates.length === 1 && dates[0] !== S.date) { ui.shiftDate = sessionsOf(dates[0])[0]; pointShift(); }   // show the day just imported
+  commit(); toast(`Imported ${n} case${n === 1 ? '' : 's'} for ${dates.map(d => dayLabel(d)).join(', ')}${bad.length ? ' – skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
 }
 function viewRooms() {
   const date = S.date; const rooms = dayRooms(date); const edit = canOt();
@@ -1278,6 +1388,17 @@ function mergeShift(b, m, t) {
     doctors: mergeColl(b.doctors, m.doctors, t.doctors), tasks: mergeColl(b.tasks, m.tasks, t.tasks), log: mergeColl(b.log, m.log, t.log) };
 }
 // OT rooms: per day, room details and each room's cases merge record by record, so two rooms updated at once both survive
+// NORA: per day, the team line and each case merge separately, so two doctors updating different cases both survive
+function mergeNora(b, m, t) {
+  const out = {};
+  for (const k of new Set([...Object.keys(m), ...Object.keys(t)])) {
+    const bd = b[k], md = m[k], td = t[k];
+    if (!md) { out[k] = td; continue; } if (!td || same(bd, td)) { out[k] = md; continue; } if (same(bd, md)) { out[k] = td; continue; }
+    const base = bd || td;
+    out[k] = { ...td, team: pick(base, md, td, 'team'), cases: mergeColl(base.cases, md.cases, td.cases) };
+  }
+  return out;
+}
 function mergeOt(b, m, t) {
   const out = {};
   for (const k of new Set([...Object.keys(m), ...Object.keys(t)])) {
@@ -1294,7 +1415,7 @@ function merge(base, mine, theirs) {
   theirs = migrate(theirs) || theirs; base = base ? (migrate(base) || base) : theirs;
   const out = { ...theirs, example: !!(mine.example && theirs.example), settings: pick(base, mine, theirs, 'settings'),
     staff: mergeColl(base.staff, mine.staff, theirs.staff), teams: mergeColl(base.teams, mine.teams, theirs.teams), rota: {}, shifts: {},
-    ot: mergeOt(base.ot || {}, mine.ot || {}, theirs.ot || {}) };
+    ot: mergeOt(base.ot || {}, mine.ot || {}, theirs.ot || {}), nora: mergeNora(base.nora || {}, mine.nora || {}, theirs.nora || {}) };
   for (const k of new Set([...Object.keys(mine.rota || {}), ...Object.keys(theirs.rota || {}), ...Object.keys(base.rota || {})])) {
     const v = (base.rota || {})[k] === (mine.rota || {})[k] ? (theirs.rota || {})[k] : (mine.rota || {})[k];
     if (v) out.rota[k] = v;
@@ -1515,6 +1636,26 @@ document.addEventListener('click', e => {
   if (a === 'close-bg' && e.target !== el) return;
   const t = id ? S.tasks.find(x => x.id === id) : null;
   const viewOnly = new Set(['signout', 'pin-open', 'hist-load', 'hist-no', 'demo', 'welcome', 'tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
+  if (a === 'nora-copy') { showText('NORA summary', noraText()); return; }
+  const noraActs = new Set(['nora-st', 'nora-add', 'nora-del', 'nora-import', 'cx-pick']);
+  if (noraActs.has(a)) {
+    if (!canOt()) { toast(sync.code && meStaff() ? 'Enter your PIN to update the NORA list' : 'Choose who you are to update the NORA list'); return; }
+    if (a === 'nora-import') { showNoraImport(); return; }
+    if (a === 'cx-pick') { cancelCase(el.closest('form').dataset.id, el.dataset.r); return; }
+    const day = noraDay(S.date, true);
+    if (a === 'nora-add') {
+      const v = x => (document.getElementById(x) || {}).value || ''; const proc = v('nProc').trim();
+      if (!proc) { toast('Type the procedure first'); return; }
+      day.cases.push({ id: uid(), time: v('nTime'), area: v('nArea').trim() || 'Other', proc, loc: v('nLoc').trim(), notes: v('nNotes').trim(), status: 'pending', reason: '', by: myName(), at: null, seq: day.cases.length });
+      commit(); toast('Case added'); return;
+    }
+    const c = day.cases.find(x => x.id === el.dataset.id); if (!c) return;
+    if (a === 'nora-del') { day.cases = day.cases.filter(x => x !== c); commit(); return; }
+    if (a === 'nora-st') {
+      if (el.dataset.v === 'cancelled') { showCancel(c.id); return; }
+      c.status = el.dataset.v; c.reason = ''; c.by = myName(); c.at = new Date().toISOString(); commit(); toast(`${c.proc}: ${NORA_ST[c.status]}`); return;
+    }
+  }
   const otActs = new Set(['rooms-import', 'case-st', 'case-add', 'case-del', 'room-add', 'room-del', 'rooms-copy']);
   if (a === 'room-open') { ui.openRooms = ui.openRooms || new Set(); const k = el.dataset.name; ui.openRooms.has(k) ? ui.openRooms.delete(k) : ui.openRooms.add(k); render(); return; }
   if (otActs.has(a)) {
@@ -1670,6 +1811,10 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const el = e.target; const a = el.dataset.act; if (!a) return;
   const d = el.dataset.id ? doc(el.dataset.id) : null;
+  if (a === 'nora-team') {
+    if (!canOt()) { render(); toast('Enter your PIN to update the NORA list'); return; }
+    noraDay(S.date, true).team = el.value.trim(); commit(); return;
+  }
   if (a === 'room-f') {
     if (!canOt()) { render(); toast('Enter your PIN to update OT rooms'); return; }
     ui.distOpen = true; const rm = realRoom(el.dataset.room); if (!rm) return; const v = el.value.trim();
@@ -1739,6 +1884,8 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'taskForm') { e.preventDefault(); commitDraft(); }
   if (e.target.id === 'pinForm') { e.preventDefault(); pinSubmit(e.target.dataset.id); }
   if (e.target.id === 'importForm') { e.preventDefault(); if (canOt()) doImport(); }
+  if (e.target.id === 'noraImportForm') { e.preventDefault(); if (canOt()) doNoraImport(); }
+  if (e.target.id === 'cancelForm') { e.preventDefault(); if (canOt()) cancelCase(e.target.dataset.id, ((document.getElementById('cxOther') || {}).value || '').trim()); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $layer.innerHTML) { draft = null; $layer.innerHTML = ''; } });
 setInterval(() => { if (ui.tab === 'timeline' && !draft) { const n = $main.querySelectorAll('.now'); const L = shiftLen(); const nr = nowRel(); if (nr >= L) n.forEach(x => x.hidden = true); else n.forEach(x => x.style.left = (nr / 60 * 84) + 'px'); } }, 60000);
@@ -1762,7 +1909,7 @@ setInterval(() => { if (sync.code && !document.hidden) { sync.dirty ? push() : p
 document.addEventListener('visibilitychange', () => { if (!document.hidden && sync.code) pull(false); });
 document.addEventListener('focusout', () => setTimeout(() => { if (sync.needRender && !$main.contains(document.activeElement)) { sync.needRender = false; render(); } }, 0));
 setInterval(renderSyncChip, 30000);
-setInterval(() => { if (ui.tab === 'ot' && !draft && !document.hidden) safeRender(); }, 60000);
+setInterval(() => { if ((ui.tab === 'ot' || ui.tab === 'nora') && !draft && !document.hidden) safeRender(); }, 60000);
 })();
 </script>
 <script>

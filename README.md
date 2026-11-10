@@ -55,6 +55,9 @@ The **OT rooms** tab is a live board of every operating room for the day:
 - **OT distribution** sets each day's rooms with their list/specialty and anaesthetist, and can copy the rooms from the previous day.
 Anyone signed in with their PIN can update rooms, including consultants who are not on the on-call shift.
 
+## NORA list
+The **NORA** tab holds each morning's non-OR anaesthesia list (radiology, nuclear medicine, ERCP, GI endoscopy). Cases are grouped by area with time, procedure and ward/bed. Each case is marked **Pending, Going, Done or Cancelled**; cancelling asks for the reason (common reasons in one tap, or typed). The day's team line, a summary count, a cancellations list and a copyable summary for the group chat are included. Lists are imported from text (date line, optional `Team:` line, then `time | area | procedure | ward/bed | notes`) or added case by case.
+
 ## PINs and history
 - **Personal PIN:** the first time someone picks their name on a team board they set a 4–6 digit PIN; after that the name needs that PIN. Once anyone on the board has a PIN, only phones signed in with their own PIN can make changes, and the server records who really made each change. Five wrong tries lock the name for 15 minutes. A second or third on-call can reset someone's PIN under *Rota & teams*.
 - **History & undo:** the server keeps earlier versions of the board for 14 days (each time a different person changes it, every 10 minutes, and before anything large is deleted). A second or third on-call can restore any of them under *Rota & teams → History & undo*; the board being replaced is kept too.
