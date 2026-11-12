@@ -60,6 +60,15 @@ Anyone signed in with their PIN can update rooms, including consultants who are 
 ## Hospital overview
 The **Hospital** tab shows every place anaesthesia is working on one screen, as tiles grouped by area: Main OT, cath lab and other rooms, Trauma OT, PACU, NORA areas, and the outside duties (APS / trauma / code blue, assessment, emergency call, OB/GYN). A tile is green when running, amber when waiting, grey when finished and red when someone needs help, and shows the current case, time running, progress and the anaesthetist. Tapping a tile opens that room or list. In the morning it shows the elective distribution; on call it shows only theatres with an on-call case, who holds the phone, and who is free now. Third on-calls land on this tab.
 
+## Alerts on the phone
+A new **need help** request or **code blue** on the current shift rings, vibrates and shows a red banner on every phone that has the app open. With notifications allowed it also shows a system notification while the app is in the background (on iPhone the app must be added to the Home Screen). Each phone can turn alerts off under Hospital → Alerts on this phone. A closed app cannot ring; true push notifications would need a server-side sender.
+
+## Free beds
+The Hospital tab shows free ICU, PACU and surgical HDU beds. Anyone on shift taps − / + when a bed frees up or is taken; the time and name of the last update are shown. Free beds are also included in the handover text.
+
+## Day / week report
+Hospital → Day / week report shows, for one day, 7 or 30 days: elective cases done and cancelled per room, average first-case start and lists started late, NORA cases and cancellations by reason, and on-call calls and cases by type and per doctor with time spent. It can be copied for the group chat.
+
 ## Week schedule import
 **Rota & teams → Import week schedule** takes one paste for the whole week: per day a date line, the on-call slots (`APS: Fahad`), a `NORA: name – names` line for the NORA team, and OT room lines (`OT 1 | Fadhli | Fady`) for the OT rooms and their anaesthetists. A day with only NORA or room lines leaves its shifts unchanged.
 

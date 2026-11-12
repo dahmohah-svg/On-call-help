@@ -171,6 +171,22 @@ select.status { border: 1px solid var(--line); background: var(--surface-2); bor
 .mtile.done { border-top-color: var(--muted); opacity: .78; }
 .mtile.empty { border-style: dashed; border-top-style: solid; opacity: .7; }
 .mtile.help { border-color: var(--crit); border-top-color: var(--crit); background: color-mix(in srgb, var(--crit) 12%, var(--surface)); opacity: 1; } .mtile.help .mt-s { color: var(--crit); }
+.beds { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.bed { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; display: grid; gap: 6px; }
+.bed .bn { font-family: var(--f-display); font-weight: 700; font-size: 18px; text-transform: uppercase; letter-spacing: .03em; }
+.bed .bv { display: flex; align-items: center; gap: 10px; }
+.bed .bv b { font: 700 34px/1 var(--f-display); min-width: 42px; text-align: center; }
+.bed .bv b.zero { color: var(--crit); }
+.bed .bv button { width: 40px; height: 40px; font-size: 22px; font-weight: 700; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); cursor: pointer; }
+.rep { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.rep th, .rep td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.rep th { font-family: var(--f-display); font-weight: 600; letter-spacing: .05em; text-transform: uppercase; font-size: 13px; color: var(--muted); }
+.rep td.n, .rep th.n { text-align: right; font-family: var(--f-mono); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.kpi { background: var(--surface-2); border-radius: var(--r); padding: 8px 10px; }
+.kpi b { display: block; font: 700 28px/1.1 var(--f-display); } .kpi span { font-size: 12px; color: var(--muted); }
+.alertbar { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 60; width: min(560px, calc(100% - 24px)); background: var(--crit); color: #fff; border-radius: 12px; padding: 12px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.35); display: flex; gap: 10px; align-items: center; font-weight: 700; }
+.alertbar .spacer { flex: 1; } .alertbar button { background: #fff; color: var(--crit); border: 0; border-radius: 8px; padding: 6px 12px; font-weight: 700; cursor: pointer; }
 .legend-m { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
 .legend-m i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 .rchip { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap; background: var(--surface-2); color: var(--muted); }
@@ -994,6 +1010,126 @@ function roomCard(r, cs, edit) {
       ${edit ? `<div class="row" style="margin-top:6px"><input class="who" id="ca-${esc(r.name)}" placeholder="Case, e.g. Lap chole" style="flex:2 1 140px;padding:6px"><input class="who" id="cl-${esc(r.name)}" placeholder="Ward / bed" style="flex:1 1 90px;padding:6px"><button class="btn sm" data-act="case-add" data-room="${esc(r.id)}" data-name="${esc(r.name)}">Add</button></div>` : ''}</div>` : ''}
   </article>`;
 }
+/* ---------- alerts on this phone: need help and code blue ---------- */
+// while the app is open (or in the background on phones that allow it), a new help request or code blue rings, vibrates and shows a notification
+const alertState = { seen: null, ctx: null };
+function alertsOn() { return readPref('alerts') !== 'off'; }
+function alertItems() {
+  const sh = R && R.shifts && R.shifts[currentShiftDate()]; if (!sh) return [];
+  return sh.tasks.filter(t => t.status === 'help' || (t.type === 'code' && t.status !== 'done'))
+    .map(t => ({ key: t.id + (t.status === 'help' ? ':h:' + (t.helpAt || '') : ':c'), t, help: t.status === 'help', sh }));
+}
+function seenAlerts() { alertState.seen = new Set(alertItems().map(x => x.key)); }
+function beep() {
+  try { const C = window.AudioContext || window.webkitAudioContext; if (!C) return; const ctx = alertState.ctx || (alertState.ctx = new C());
+    [0, 0.28, 0.56].forEach(at => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; o.frequency.value = 880; g.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+      g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.2); o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + at); o.stop(ctx.currentTime + at + 0.22); });
+  } catch (e) {}
+}
+function checkAlerts() {
+  const items = alertItems(); const keys = new Set(items.map(x => x.key));
+  if (!alertState.seen) { alertState.seen = keys; return; }
+  const me = ui.meId, myN = myName();
+  const fresh = items.filter(x => !alertState.seen.has(x.key) && !(x.help && x.t.doctorId === me) && !(!x.help && x.t.postedBy && x.t.postedBy === myN));
+  alertState.seen = keys;
+  if (!fresh.length || !alertsOn()) return;
+  const x = fresh[0]; const who = (x.sh.doctors.find(d => d.id === x.t.doctorId) || {}).name || 'Someone';
+  const title = x.help ? `${who} needs help` : 'Code blue';
+  const body = `${x.help ? TYPES[x.t.type].short + ': ' : ''}${x.help ? (x.t.title || '') : (x.t.title || '').replace(/^code blue\s*[–-]\s*/i, '')}${x.t.location ? ' · ' + x.t.location : ''}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ''}`;
+  beep(); try { navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]); } catch (e) {}
+  let bar = document.querySelector('.alertbar'); if (!bar) { bar = document.createElement('div'); bar.className = 'alertbar'; bar.setAttribute('role', 'alert'); document.body.appendChild(bar); }
+  bar.innerHTML = `<span>${esc(title)} – ${esc(body)}</span><span class="spacer"></span><button data-act="alert-see">See</button>`;
+  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+    const opts = { body, tag: x.key, renotify: true, requireInteraction: true, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', vibrate: [400, 150, 400] };
+    (navigator.serviceWorker && navigator.serviceWorker.ready ? navigator.serviceWorker.ready.then(r => r.showNotification(title, opts)) : Promise.reject()).catch(() => { try { new Notification(title, opts); } catch (e) {} });
+  }
+}
+function alertsPanel() {
+  const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+  return `<section class="panel"><div class="row"><h2>Alerts on this phone</h2><span class="spacer"></span><button class="btn sm ${alertsOn() ? 'primary' : ''}" data-act="alerts-toggle">${alertsOn() ? 'On' : 'Off'}</button></div>
+    <p class="empty" style="margin:0">A new <b>need help</b> request or <b>code blue</b> on the current shift rings, vibrates and shows a red banner on this phone.${perm === 'granted' ? ' Notifications are allowed, so it also alerts while the app is in the background.' : ''}</p>
+    ${perm === 'default' || perm === 'denied' ? `<div class="row"><button class="btn sm" data-act="alerts-perm">Allow notifications</button><span class="empty" style="font-size:12px">${perm === 'denied' ? 'Notifications are blocked for this site in the phone settings.' : 'To be alerted while the app is in the background.'} On iPhone, first add the app to the Home Screen.</span></div>` : ''}
+    <div class="row"><button class="btn sm ghost" data-act="alerts-test">Test the alert</button><span class="empty" style="font-size:12px">Keep the app open during the shift; a closed app cannot ring.</span></div></section>`;
+}
+
+/* ---------- free beds: ICU and PACU, updated by anyone on shift ---------- */
+const BEDS = [['icu', 'ICU'], ['pacu', 'PACU'], ['hdu', 'Surgical HDU']];
+function viewBeds() {
+  const b = R.beds || {}; const edit = canOt();
+  return `<section class="zone"><div class="zone-h"><h2>Free beds</h2><span class="empty">Tap − / + when a bed frees up or is taken</span></div><div class="beds">${BEDS.map(([k, n]) => {
+    const x = b[k] || {}; const v = x.free == null ? null : x.free;
+    return `<div class="bed"><span class="bn">${n}</span><div class="bv">${edit ? `<button data-act="bed" data-k="${k}" data-d="-1" aria-label="One fewer free ${n} bed">−</button>` : ''}<b class="${v === 0 ? 'zero' : ''}">${v == null ? '–' : v}</b>${edit ? `<button data-act="bed" data-k="${k}" data-d="1" aria-label="One more free ${n} bed">+</button>` : ''}</div>
+      <span class="empty" style="font-size:12px">${x.at ? 'Updated ' + ago(x.at) + (x.by ? ' · ' + esc(x.by) : '') : 'Not set yet'}</span></div>`;
+  }).join('')}</div></section>`;
+}
+
+/* ---------- report: a day or a week, for the head of department ---------- */
+function reportData(from, to) {
+  const inRange = d => d >= from && d <= to; const minOf = iso => { const t = new Date(iso); return t.getHours() * 60 + t.getMinutes(); };
+  const ot = { cases: 0, done: 0, cancelled: 0, firstStarts: [], rooms: {} };
+  Object.keys(R.ot || {}).filter(inRange).sort().forEach(d => (R.ot[d].rooms || []).forEach(r => {
+    const cs = r.cases || []; if (!cs.length) return; const x = ot.rooms[r.name] || (ot.rooms[r.name] = { cases: 0, done: 0, cancelled: 0, mins: 0, starts: [] });
+    cs.forEach(c => { x.cases++; ot.cases++; if (c.status === 'done') { x.done++; ot.done++; if (c.startedAt && c.endedAt) x.mins += minsSince(c.startedAt, c.endedAt); } if (c.status === 'cancelled') { x.cancelled++; ot.cancelled++; } });
+    const st = cs.filter(c => c.startedAt).map(c => minOf(c.startedAt)).sort((a, b) => a - b)[0]; if (st != null) { x.starts.push(st); ot.firstStarts.push(st); }
+  }));
+  const nora = { cases: 0, done: 0, cancelled: 0, reasons: {} };
+  Object.keys(R.nora || {}).filter(inRange).forEach(d => (R.nora[d].cases || []).forEach(c => { nora.cases++; if (c.status === 'done') nora.done++;
+    if (c.status === 'cancelled') { nora.cancelled++; const k = c.reason || 'No reason given'; nora.reasons[k] = (nora.reasons[k] || 0) + 1; } }));
+  const oc = { tasks: 0, done: 0, help: 0, types: {}, docs: {} };
+  Object.keys(R.shifts || {}).filter(k => inRange(k.slice(0, 10))).forEach(k => { const sh = R.shifts[k];
+    (sh.tasks || []).forEach(t => { oc.tasks++; oc.types[t.type] = (oc.types[t.type] || 0) + 1; if (t.status === 'done') oc.done++; if (t.helpAt || t.status === 'help') oc.help++;
+      const d = (sh.doctors || []).find(x => x.id === t.doctorId); if (!d) return; const y = oc.docs[d.name] || (oc.docs[d.name] = { n: 0, mins: 0, tier: tierShort(d) }); y.n++;
+      if (t.status === 'done') y.mins += t.startedAt && t.endedAt ? minsSince(t.startedAt, t.endedAt) : (t.duration || 0); }); });
+  return { ot, nora, oc };
+}
+const hm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+const avg = a => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null;
+function reportRange() { const days = ui.repDays || 1; const to = S.date; return { from: addDays(to, 1 - days), to, days }; }
+function showReport() {
+  const { from, to, days } = reportRange(); const D = reportData(from, to); const late = R.settings.morningStart || '07:30';
+  const lateMin = Number(late.slice(0, 2)) * 60 + Number(late.slice(3)) + 15; const lateN = D.ot.firstStarts.filter(m => m > lateMin).length;
+  const rooms = Object.entries(D.ot.rooms).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  const docs = Object.entries(D.oc.docs).sort((a, b) => b[1].n - a[1].n);
+  const reasons = Object.entries(D.nora.reasons).sort((a, b) => b[1] - a[1]);
+  $layer.innerHTML = `<div class="overlay" data-act="close-bg"><div class="sheet" style="max-width:860px">
+    <div class="row"><h3>Report · ${esc(days === 1 ? dayLabel(to) : dayLabel(from) + ' – ' + dayLabel(to))}</h3><span class="spacer"></span><button class="btn sm ghost" data-act="close">Close</button></div>
+    <div class="row" style="gap:6px">${[[1, 'This day'], [7, 'Last 7 days'], [30, 'Last 30 days']].map(([n, l]) => `<button class="btn sm ${days === n ? 'primary' : ''}" data-act="rep-days" data-n="${n}">${l}</button>`).join('')}</div>
+    <div class="kpis">
+      <div class="kpi"><b>${D.ot.done}/${D.ot.cases - D.ot.cancelled}</b><span>elective cases done</span></div>
+      <div class="kpi"><b>${D.ot.cancelled + D.nora.cancelled}</b><span>cancellations (OT + NORA)</span></div>
+      <div class="kpi"><b>${avg(D.ot.firstStarts) != null ? hm(avg(D.ot.firstStarts)) : '–'}</b><span>average first-case start</span></div>
+      <div class="kpi"><b>${lateN}</b><span>lists started after ${hm(lateMin)}</span></div>
+      <div class="kpi"><b>${D.nora.done}/${D.nora.cases - D.nora.cancelled}</b><span>NORA cases done</span></div>
+      <div class="kpi"><b>${D.oc.tasks}</b><span>on-call calls and cases</span></div>
+      <div class="kpi"><b>${D.oc.help}</b><span>help requests</span></div></div>
+    ${rooms.length ? `<h2>OT rooms</h2><div class="scroll-x"><table class="rep"><thead><tr><th>Room</th><th class="n">Cases</th><th class="n">Done</th><th class="n">Cancelled</th><th class="n">Avg first start</th><th class="n">Theatre time</th></tr></thead><tbody>${rooms.map(([n, x]) => `<tr><td>${esc(n)}</td><td class="n">${x.cases}</td><td class="n">${x.done}</td><td class="n">${x.cancelled || ''}</td><td class="n">${x.starts.length ? hm(avg(x.starts)) : '–'}</td><td class="n">${x.mins ? durTxt(x.mins) : '–'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty" style="margin:0">No OT cases recorded for these days.</p>'}
+    ${reasons.length ? `<h2>NORA cancellations</h2><table class="rep"><tbody>${reasons.map(([r, n]) => `<tr><td>${esc(r)}</td><td class="n">${n}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${D.oc.tasks ? `<h2>On-call work</h2><p class="empty" style="margin:0">${Object.entries(D.oc.types).map(([k, n]) => `${esc(TYPES[k] ? TYPES[k].short : k)} ${n}`).join(' · ')}</p>
+      <div class="scroll-x"><table class="rep"><thead><tr><th>Doctor</th><th></th><th class="n">Calls / cases</th><th class="n">Time</th></tr></thead><tbody>${docs.map(([n, y]) => `<tr><td>${esc(n)}</td><td>${esc(y.tier)}</td><td class="n">${y.n}</td><td class="n">${y.mins ? durTxt(y.mins) : '–'}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    <p class="empty" style="margin:0;font-size:12px">Counts come from what was marked in the app. Times are recorded when a case is started and finished.</p>
+    <div class="row"><span class="spacer"></span><button class="btn primary" data-act="rep-copy">Copy report for the group chat</button></div></div></div>`;
+}
+function reportText() {
+  const { from, to, days } = reportRange(); const D = reportData(from, to);
+  let out = `REPORT · ${days === 1 ? dayLabel(to) : dayLabel(from) + ' – ' + dayLabel(to)}\n`;
+  out += `Elective cases done ${D.ot.done}/${D.ot.cases - D.ot.cancelled} · cancelled ${D.ot.cancelled}${avg(D.ot.firstStarts) != null ? ' · average first start ' + hm(avg(D.ot.firstStarts)) : ''}\n`;
+  if (D.nora.cases) out += `NORA done ${D.nora.done}/${D.nora.cases - D.nora.cancelled} · cancelled ${D.nora.cancelled}${Object.keys(D.nora.reasons).length ? ' (' + Object.entries(D.nora.reasons).map(([r, n]) => r + ' ' + n).join(', ') + ')' : ''}\n`;
+  if (D.oc.tasks) out += `On-call: ${D.oc.tasks} calls and cases (${Object.entries(D.oc.types).map(([k, n]) => (TYPES[k] ? TYPES[k].short : k) + ' ' + n).join(', ')}) · help requests ${D.oc.help}\n`;
+  const rooms = Object.entries(D.ot.rooms).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  if (rooms.length) out += '\n' + rooms.map(([n, x]) => `  ${n}: ${x.done}/${x.cases - x.cancelled} done${x.cancelled ? ', ' + x.cancelled + ' cancelled' : ''}${x.starts.length ? ', first start ' + hm(avg(x.starts)) : ''}`).join('\n') + '\n';
+  return out;
+}
+function hospitalText() {
+  const am = S.session === 'am'; const rooms = dayRooms(S.date).map(r => ({ r, cs: roomCases(r).filter(c => am || c.kind === 'oc') })).filter(x => x.cs.length);
+  let out = '';
+  const run = rooms.filter(x => roomState(x.cs) === 'running'), wait = rooms.filter(x => roomState(x.cs) === 'waiting');
+  if (run.length) out += `\nTheatres running:\n` + run.map(({ r, cs }) => { const c = cs.find(y => y.status === 'running'); return `  ${r.name}: ${c.title}${c.startedAt ? ' (' + durTxt(minsSince(c.startedAt)) + ')' : ''}${c.who || r.anaes ? ' – ' + (c.who || r.anaes) : ''}`; }).join('\n') + '\n';
+  if (wait.length) out += `Theatres waiting: ${wait.map(x => x.r.name + ' (' + x.cs.filter(c => c.status === 'waiting').length + ')').join(', ')}\n`;
+  const b = R.beds || {}; const bl = BEDS.filter(([k]) => b[k] && b[k].free != null).map(([k, n]) => `${n} ${b[k].free}`);
+  if (bl.length) out += `Free beds: ${bl.join(' · ')}\n`;
+  return out;
+}
+
 /* ---------- Hospital overview: every place anaesthesia is working, on one screen ---------- */
 function roomZone(name) { return /^trauma/i.test(name) ? 'Trauma OT' : /^pacu|recovery/i.test(name) ? 'PACU' : /^(ot|or|main ot|theatre)\b/i.test(name) ? 'Main OT' : 'Cath lab & other'; }
 function mtile(cls, name, right, state, line, sub, attrs) {
@@ -1011,6 +1147,7 @@ function viewMap() {
   const openT = S.tasks.filter(t => t.status !== 'done');
   let h = `<div class="nowbar"><b class="k">Hospital · ${esc(dayLabel(date))}</b><span><b>${cnt('running')}</b> rooms running</span><span><b>${cnt('waiting')}</b> waiting</span><span><b>${cnt('done')}</b> finished</span><span>Cases <b>${live.filter(c => c.status === 'done').length}/${live.length}</b></span>${nd.cases.length ? `<span>NORA <b>${nc('done')}/${nd.cases.length - nc('cancelled')}</b></span>` : ''}<span>On-call tasks <b>${openT.length}</b> open</span>${helpT.length ? `<span style="color:var(--crit)"><b>${helpT.length}</b> need help</span>` : ''}</div>`;
   h += helpQueue();
+  if (!alertsOn() || ('Notification' in window && Notification.permission === 'default')) h += `<div class="banner"><span>Turn on alerts so a help request or code blue rings on this phone.</span><button class="btn sm primary" data-act="alerts-enable">Turn on alerts</button></div>`;
   h += `<div class="legend-m"><span><i style="background:var(--ok)"></i>Running</span><span><i style="background:var(--warn)"></i>Waiting</span><span><i style="background:var(--muted)"></i>Finished</span><span><i style="background:var(--crit)"></i>Needs help</span><span>Tap a tile to open it</span></div>`;
   // theatres by zone
   const order = ['Main OT', 'Cath lab & other', 'Trauma OT', 'PACU'];
@@ -1059,6 +1196,9 @@ function viewMap() {
     const tied = S.doctors.filter(d => d.tier !== 'third' && (busy.has(d.id) || d.status === 'busy'));
     if (S.doctors.length) h += `<section class="panel"><div class="row"><h2>Free now · ${free.length}</h2><span class="spacer"></span><span class="empty">${tied.length} busy</span></div><div class="row" style="gap:6px">${free.map(d => `<span class="chip">${esc(d.name)} · ${esc(tierShort(d))}</span>`).join('') || '<span class="empty">Everyone on this shift has a case or call in progress.</span>'}</div></section>`;
   }
+  h += viewBeds();
+  h += `<div class="row"><button class="btn" data-act="report">Day / week report</button><button class="btn" data-act="handover">Handover text</button><span class="spacer"></span></div>`;
+  h += alertsPanel();
   const third = S.doctors.filter(d => d.tier === 'third'); const sec = S.doctors.filter(d => d.tier === 'second');
   if (third.length || sec.length) h += `<p class="empty" style="margin:0">${third.length ? '3rd on-call: <b>' + esc(third.map(d => d.name).join(', ')) + '</b>' : ''}${third.length && sec.length ? ' · ' : ''}${sec.length ? '2nd on-call: <b>' + esc(sec.map(d => d.name + (d.coordinator ? ' (coord)' : '')).join(', ')) + '</b>' : ''}</p>`;
   return h;
@@ -1539,6 +1679,7 @@ function handoverText() {
   if (un.length) out += `\nUNASSIGNED\n` + un.map(line).join('\n') + '\n';
   const done = S.tasks.filter(t => t.status === 'done').length;
   if (S.plan && S.session !== 'am') out += '\n' + planText();
+  out += hospitalText();
   out += `\nCompleted this shift: ${done}`;
   if ((S.log || []).length) out += `\n\nTeam changes:\n` + S.log.map(l => '  ' + l.text + ' (' + l.by + ')').join('\n');
   return out;
@@ -1642,7 +1783,7 @@ function mergeOt(b, m, t) {
 }
 function merge(base, mine, theirs) {
   theirs = migrate(theirs) || theirs; base = base ? (migrate(base) || base) : theirs;
-  const out = { ...theirs, example: !!(mine.example && theirs.example), settings: pick(base, mine, theirs, 'settings'),
+  const out = { ...theirs, example: !!(mine.example && theirs.example), settings: pick(base, mine, theirs, 'settings'), beds: pick(base, mine, theirs, 'beds'),
     staff: mergeColl(base.staff, mine.staff, theirs.staff), teams: mergeColl(base.teams, mine.teams, theirs.teams), rota: {}, shifts: {},
     ot: mergeOt(base.ot || {}, mine.ot || {}, theirs.ot || {}), nora: mergeNora(base.nora || {}, mine.nora || {}, theirs.nora || {}) };
   for (const k of new Set([...Object.keys(mine.rota || {}), ...Object.keys(theirs.rota || {}), ...Object.keys(base.rota || {})])) {
@@ -1657,7 +1798,7 @@ function merge(base, mine, theirs) {
 }
 function adopt(row) { sync.version = Number(row.version); sync.base = clone(row.state); sync.updatedBy = row.updated_by || ''; sync.updatedAt = row.updated_at || null; }
 function mergeIn(row) {
-  R = merge(sync.base, R, row.state); pointShift(); adopt(row);
+  R = merge(sync.base, R, row.state); pointShift(); adopt(row); checkAlerts();
   sync.dirty = !same(R, row.state); save(); safeRender();
 }
 async function push() {
@@ -1689,7 +1830,7 @@ async function pull(force) {
       if (row.signin) { lockedOut(); return; } if (row.missing) { setStatus('error', 'Team board not found'); return; }
       sync.private = !!row.private;
       if (Number(row.version) >= sync.version) {
-        if (sync.dirty) mergeIn(row); else { R = migrate(row.state) || blankRoot(); pointShift(); adopt(row); save(); safeRender(); }
+        if (sync.dirty) mergeIn(row); else { R = migrate(row.state) || blankRoot(); pointShift(); adopt(row); save(); safeRender(); checkAlerts(); }
       }
     }
     setStatus('live');
@@ -1915,7 +2056,7 @@ function setTaskStatus(t, v) {
 /* ---------- events ---------- */
 let toastT;
 function toast(msg) { clearTimeout(toastT); let el = document.querySelector('.toast'); if (!el) { el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); } el.textContent = msg; el.hidden = false; toastT = setTimeout(() => el.hidden = true, 2600); }
-function commit() { pruneShifts(); save(); render(); markDirty(); }
+function commit() { pruneShifts(); save(); render(); markDirty(); seenAlerts(); }
 
 document.getElementById('tabs').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]'); if (!b) return;
@@ -1930,6 +2071,17 @@ document.addEventListener('click', e => {
   const t = id ? S.tasks.find(x => x.id === id) : null;
   const viewOnly = new Set(['priv-no', 'signout', 'pin-open', 'hist-load', 'hist-no', 'demo', 'welcome', 'tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
   if (a === 'nora-copy') { showText('NORA summary', noraText()); return; }
+  if (a === 'report') { showReport(); return; }
+  if (a === 'rep-days') { ui.repDays = Number(el.dataset.n); showReport(); return; }
+  if (a === 'rep-copy') { showText('Report', reportText()); return; }
+  if (a === 'alert-see') { const bar = document.querySelector('.alertbar'); if (bar) bar.remove(); ui.shiftDate = currentShiftDate(); pointShift(); ui.tab = 'map'; writePref('tab', 'map'); render(); window.scrollTo(0, 0); return; }
+  if (a === 'alerts-toggle') { writePref('alerts', alertsOn() ? 'off' : 'on'); render(); toast(alertsOn() ? 'Alerts on for this phone' : 'Alerts off for this phone'); return; }
+  if (a === 'alerts-enable' || a === 'alerts-perm') { writePref('alerts', 'on'); beep();
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().then(() => { render(); toast('Alerts on for this phone'); }); else { render(); toast('Alerts on for this phone'); } return; }
+  if (a === 'alerts-test') { beep(); try { navigator.vibrate && navigator.vibrate([400, 150, 400]); } catch (e) {} toast('This is how an alert sounds. Check the volume is up.'); return; }
+  if (a === 'bed') { if (!canOt()) { toast(sync.code && meStaff() ? 'Enter your PIN to update beds' : 'Choose who you are to update beds'); return; }
+    R.beds = R.beds || {}; const k = el.dataset.k; const x = R.beds[k] || {}; const v = Math.max(0, (x.free == null ? 0 : x.free) + Number(el.dataset.d));
+    R.beds[k] = { free: v, at: new Date().toISOString(), by: myName() }; commit(); return; }
   if (a === 'prep-open') { showPrep(el.dataset.kind, el.dataset.room, el.dataset.case); return; }
   const noraActs = new Set(['nora-st', 'nora-add', 'nora-del', 'nora-import', 'cx-pick']);
   if (noraActs.has(a)) {
@@ -2220,7 +2372,8 @@ if (sync.code) { refreshPins(); setInterval(() => { if (!document.hidden) refres
 setInterval(() => { const c = currentShiftDate(); if (ui.autoDate !== c) { const wasCurrent = ui.shiftDate === ui.autoDate; ui.autoDate = c; if (wasCurrent && !draft) { ui.shiftDate = c; pointShift(); safeRender(); } } }, 60000);
 ui.autoDate = currentShiftDate();
 if (sync.code) { setStatus('connecting'); sync.dirty ? push() : pull(true); }
-setInterval(() => { if (sync.code && !document.hidden) { sync.dirty ? push() : pull(false); } }, 4000);
+let bgTick = 0;
+setInterval(() => { if (!sync.code) return; if (document.hidden && !(alertsOn() && (++bgTick % 4 === 0))) return; sync.dirty ? push() : pull(false); }, 4000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && sync.code) pull(false); });
 document.addEventListener('focusout', () => setTimeout(() => { if (sync.needRender && !$main.contains(document.activeElement)) { sync.needRender = false; render(); } }, 0));
 setInterval(renderSyncChip, 30000);
