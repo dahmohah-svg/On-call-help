@@ -60,6 +60,22 @@ Anyone signed in with their PIN can update rooms, including consultants who are 
 ## Hospital overview
 The **Hospital** tab shows every place anaesthesia is working on one screen, as tiles grouped by area: Main OT, cath lab and other rooms, Trauma OT, PACU, NORA areas, and the outside duties (APS / trauma / code blue, assessment, emergency call, OB/GYN). A tile is green when running, amber when waiting, grey when finished and red when someone needs help, and shows the current case, time running, progress and the anaesthetist. Tapping a tile opens that room or list. In the morning it shows the elective distribution; on call it shows only theatres with an on-call case, who holds the phone, and who is free now. Third on-calls land on this tab.
 
+## Simpler view and access by role
+Each person sees the tabs their role uses every day; the rest are one tap away under **More**:
+- First on-call, trainee, and staff not on call: My work · Hospital · OT rooms · NORA
+- Second on-call: Hospital · Board · Coverage · Tasks · OT rooms · NORA · Rota & teams
+- Third on-call and observers (head of department): Hospital · OT rooms · NORA · Board · Coverage
+
+A **Today for …** card at the top of My work and Hospital shows the person's morning duty and duty phone, the room they are anaesthetising in (from the OT distribution), the NORA team, tonight's on-call role and list preparation.
+
+Who can change what:
+- A room's cases (start, finish, cancel, add, prepared details): that room's anaesthetist, as named in the OT distribution, plus the day's list prep and second / third on-calls.
+- NORA case status and cancellations: the day's NORA team (names in the NORA team line), plus list prep and second / third on-calls. Adding, removing and importing NORA cases and setting the team: list prep and second / third on-calls.
+- OT distribution, rooms and imports: list prep and second / third on-calls.
+- Rota, teams, staff, PINs and the week schedule: second on-calls.
+- On-call tasks: as before (first on-calls their own, second on-calls assign everything).
+- Free beds: anyone signed in.
+
 ## Alerts on the phone
 A new **need help** request or **code blue** on the current shift rings, vibrates and shows a red banner on every phone that has the app open. With notifications allowed it also shows a system notification while the app is in the background (on iPhone the app must be added to the Home Screen). Each phone can turn alerts off under Hospital → Alerts on this phone. A closed app cannot ring; true push notifications would need a server-side sender.
 

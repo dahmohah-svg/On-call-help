@@ -156,6 +156,7 @@ select.status { border: 1px solid var(--line); background: var(--surface-2); bor
 .room.waiting { border-left-color: var(--warn); }
 .room.done { border-left-color: var(--muted); }
 .room-name { font-family: var(--f-display); font-weight: 700; font-size: 20px; letter-spacing: .03em; text-transform: uppercase; }
+.more-tabs { border: 0; background: none; color: var(--accent); font-weight: 700; padding: 0 12px; cursor: pointer; white-space: nowrap; font-family: var(--f-display); letter-spacing: .06em; text-transform: uppercase; font-size: 16px; }
 .zone { display: grid; gap: 8px; }
 .zone-h { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .zone-h .empty { font-size: 13px; }
@@ -311,6 +312,7 @@ pre.handover { background: var(--bg); border: 1px solid var(--line); border-radi
       <button role="tab" data-tab="ot">OT rooms</button>
       <button role="tab" data-tab="nora">NORA</button>
       <button role="tab" data-tab="team">Rota &amp; teams</button>
+      <button class="more-tabs" data-act="more-tabs" id="moreTabs" type="button">More</button>
     </nav>
   </div>
 </header>
@@ -718,6 +720,10 @@ function tierShort(d) { return d.tier === 'trainee' ? 'Trainee' : d.tier === 'th
 function meDoc() { return ui.meId && ui.meId !== 'observer' ? doc(ui.meId) : null; }
 function meStaff() { return ui.meId && ui.meId !== 'observer' ? staffOf(ui.meId) : null; }
 // role on the shift being viewed; 'offduty' = in the department but not on this shift
+// the tabs each kind of user needs every day; everything else is one tap away under More
+const TABSETS = { first: ['mine', 'map', 'ot', 'nora'], trainee: ['mine', 'map', 'ot', 'nora'], offduty: ['mine', 'map', 'ot', 'nora'],
+  second: ['map', 'board', 'plan', 'tasks', 'ot', 'nora', 'team'], third: ['map', 'ot', 'nora', 'board', 'plan'] };
+function tabSet() { const r = role(); if (ui.meId === 'observer') return TABSETS.third; return TABSETS[r] || ['mine', 'map', 'board', 'plan', 'timeline', 'tasks', 'ot', 'nora', 'team']; }
 function role() { const d = meDoc(); if (d) return d.tier; const sf = meStaff();
   if (sf && S && S.session === 'am') {   // the day's second and third on-calls run the morning too
     const night = R.shifts[S.date]; const onDay = night ? night.doctors.some(x => x.id === sf.id) : (R.teams.find(t => t.id === R.rota[S.date]) || { members: [] }).members.some(m => m.staffId === sf.id);
@@ -761,7 +767,10 @@ function render() {
     (s.late ? `<span class="stat alert"><b>${s.late}</b> past shift end</span>` : '');
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab)));
   const mb = document.getElementById('meBtn'); mb.textContent = (meDoc() || meStaff()) ? 'Me: ' + myName() : ui.meId === 'observer' ? 'Observer' : 'Who are you?'; mb.classList.toggle('unset', !ui.meId);
-  document.getElementById('tabMine').hidden = role() === 'third';
+  const set = tabSet(); const all = set.length >= 9;
+  document.querySelectorAll('#tabs button[data-tab]').forEach(b => { b.hidden = !(all || ui.moreTabs || set.includes(b.dataset.tab) || b.dataset.tab === ui.tab); });
+  const mt = document.getElementById('moreTabs'); mt.hidden = all; mt.textContent = ui.moreTabs ? 'Fewer' : 'More';
+  if (role() === 'third' && !ui.moreTabs) document.getElementById('tabMine').hidden = true;
   if (ui.tab === 'mine' && role() === 'third') ui.tab = 'map';
   const views = { mine: viewMine, map: viewMap, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewRooms, nora: viewNora, team: viewTeam };
   const needSignin = !!sync.code && sync.private && !signedIn();
@@ -939,7 +948,19 @@ function otDay(date, create) {
 function dayRooms(date) { const d = otDay(date); return d ? d.rooms : R.settings.theatres.map(n => ({ id: 'v:' + n, name: n, list: '', anaes: '', cases: [] })); }
 function realRoom(rid) { if (String(rid).startsWith('v:')) { const d = otDay(S.date, true); return d.rooms.find(x => x.name === rid.slice(2)); } const d = otDay(S.date); return d && d.rooms.find(x => x.id === rid); }
 // anyone signed in on this phone can update rooms (consultants running lists are often not on the on-call shift)
-function canOt() { if (!verified()) return false; const r = role(); return r === 'none' || (!!meStaff() && ui.meId !== 'observer'); }
+function canOt() { if (!verified()) return false; const r = role(); return r === 'none' || (!!meStaff() && ui.meId !== 'observer'); }   // any signed-in staff: beds
+// a name appears in a free-text field like "Fahad, Sdqat (cover 14/15)" or "Zarzour – Shahin, Mabrouk"
+function nameIn(text, name) { if (!text || !name) return false; const n = name.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return new RegExp('(^|[^a-z])' + n + '([^a-z]|$)', 'i').test(text); }
+function listPrepToday() { const id = ui.meId; return [S.date, S.date + '@am'].some(k => R.shifts[k] && R.shifts[k].doctors.some(d => d.id === id && d.listPrep)); }
+// seniors (2nd / 3rd on-call) and the day's list prep run the theatre and NORA lists: distribution, imports, adding and removing
+function canOtManage() { if (!verified() || ui.meId === 'observer') return false; const r = role(); const sf = meStaff();
+  return r === 'none' || r === 'second' || r === 'third' || (!!sf && (sf.tier === 'second' || sf.tier === 'third')) || (!!sf && listPrepToday()); }
+// a room's own anaesthetist updates that room's cases
+function canRoom(r) { return canOtManage() || (!!r && verified() && !!meStaff() && nameIn(r.anaes, myName())); }
+// the day's NORA team updates NORA cases
+function canNora() { return canOtManage() || (verified() && !!meStaff() && nameIn((noraDay(S.date) || {}).team, myName())); }
+function canPrep(kind, rid) { return kind === 'nora' ? canNora() : canRoom(realRoom(rid)); }
+function denyMsg(what) { return sync.code && meStaff() && !verified() ? 'Enter your PIN to make changes' : !meStaff() && role() !== 'none' ? 'Choose who you are first' : what; }
 function hhmm(iso) { return iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''; }
 function minsSince(a, b) { return Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 60000)); }
 function durTxt(m) { return m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : m + ' min'; }
@@ -951,14 +972,14 @@ function parsePrep(txt) { return txt.split(/\r?\n/).map(x => x.trim()).filter(Bo
 function prepText(d) { return (d || []).map(([k, v]) => k + ': ' + v).join('\n'); }
 function mergePrep(old, add) { const out = (old || []).map(x => x.slice()); add.forEach(([k, v]) => { const o = out.find(x => x[0].toLowerCase() === k.toLowerCase()); if (o) o[1] = v; else out.push([k, v]); }); return out; }
 function prepHtml(d) { return `<dl class="prep">${(d || []).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`; }
-function prepBtn(kind, c, room) { const has = c.details && c.details.length; if (!has && !canOt()) return '';
+function prepBtn(kind, c, room) { const has = c.details && c.details.length; if (!has && !canPrep(kind, room)) return '';
   return `<button class="icon-btn prep-btn ${has ? 'has' : ''}" data-act="prep-open" data-kind="${kind}" data-room="${esc(room || '')}" data-case="${c.id}">${has ? 'Prepared ✓' : '+ Prep details'}</button>`; }
 function prepCase(kind, rid, cid) {
   if (kind === 'nora') return (noraDay(S.date) || { cases: [] }).cases.find(x => x.id === cid);
   const room = realRoom(rid); return room && room.cases.find(x => x.id === cid);
 }
 function showPrep(kind, rid, cid, err) {
-  const c = prepCase(kind, rid, cid); if (!c) return; const edit = canOt(); const d = c.details || [];
+  const c = prepCase(kind, rid, cid); if (!c) return; const edit = canPrep(kind, rid); const d = c.details || [];
   const title = kind === 'nora' ? c.proc : c.title, loc = kind === 'nora' ? c.loc : c.location;
   $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="prepForm" data-kind="${kind}" data-room="${esc(rid || '')}" data-case="${c.id}" autocomplete="off">
     <div class="row"><h3>Prepared details</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
@@ -1010,6 +1031,22 @@ function roomCard(r, cs, edit) {
       ${edit ? `<div class="row" style="margin-top:6px"><input class="who" id="ca-${esc(r.name)}" placeholder="Case, e.g. Lap chole" style="flex:2 1 140px;padding:6px"><input class="who" id="cl-${esc(r.name)}" placeholder="Ward / bed" style="flex:1 1 90px;padding:6px"><button class="btn sm" data-act="case-add" data-room="${esc(r.id)}" data-name="${esc(r.name)}">Add</button></div>` : ''}</div>` : ''}
   </article>`;
 }
+/* ---------- "today for me": where this doctor is, in one card ---------- */
+function myToday() {
+  const sf = meStaff(); if (!sf) return ''; const date = S.date, name = sf.name; const items = [];
+  const am = R.shifts[date + '@am'], night = R.shifts[date];
+  const dAm = am && am.doctors.find(d => d.id === sf.id), dN = night && night.doctors.find(d => d.id === sf.id);
+  if (dAm && dAm.duty) items.push(`<b>Morning:</b> ${esc(DUTY[dAm.duty])}${dutyPhone(dAm.duty) ? ' · phone <span class="num">' + esc(dutyPhone(dAm.duty)) + '</span>' : ''}`);
+  (otDay(date) || { rooms: [] }).rooms.filter(r => nameIn(r.anaes, name)).forEach(r => { const cs = roomCases(r).filter(c => c.status !== 'cancelled'); const dn = cs.filter(c => c.status === 'done').length;
+    items.push(`<b>Anaesthesia in ${esc(r.name)}</b>${r.list ? ' · ' + esc(r.list) : ''}${cs.length ? ` · ${dn} of ${cs.length} done` : ''} <button class="btn sm" data-act="map-room" data-name="${esc(r.name)}">Open</button>`); });
+  const nd = noraDay(date); if (nd && nameIn(nd.team, name)) items.push(`<b>NORA team</b> · ${nd.cases.filter(c => c.status === 'done').length} of ${nd.cases.filter(c => c.status !== 'cancelled').length} done <button class="btn sm" data-act="tab" data-tab="nora">Open</button>`);
+  const lp = (dAm && dAm.listPrep) || (dN && dN.listPrep);
+  if (dN) items.push(`<b>On call tonight:</b> ${esc(tierLabel(dN))}${dN.coordinator ? ' · team coordinator' : ''}${dN.duty && dutyPhone(dN.duty) ? ' · phone <span class="num">' + esc(dutyPhone(dN.duty)) + '</span>' : ''}`);
+  if (lp) items.push('<b>List preparation</b> for tomorrow');
+  return `<section class="panel" style="border:2px solid var(--accent)"><div class="row"><h2>Today for ${esc(name)}</h2><span class="empty">${esc(dayLabel(date))}</span></div>
+    ${items.length ? `<ul class="rules" style="color:var(--fg);font-size:14.5px">${items.map(x => `<li>${x}</li>`).join('')}</ul>` : `<p class="empty" style="margin:0">Nothing assigned to you on ${esc(dayLabel(date))}.</p>`}</section>`;
+}
+
 /* ---------- alerts on this phone: need help and code blue ---------- */
 // while the app is open (or in the background on phones that allow it), a new help request or code blue rings, vibrates and shows a notification
 const alertState = { seen: null, ctx: null };
@@ -1146,6 +1183,7 @@ function viewMap() {
   const nd = (am && noraDay(date)) || { team: '', cases: [] }; const nc = k => nd.cases.filter(c => c.status === k).length;
   const openT = S.tasks.filter(t => t.status !== 'done');
   let h = `<div class="nowbar"><b class="k">Hospital · ${esc(dayLabel(date))}</b><span><b>${cnt('running')}</b> rooms running</span><span><b>${cnt('waiting')}</b> waiting</span><span><b>${cnt('done')}</b> finished</span><span>Cases <b>${live.filter(c => c.status === 'done').length}/${live.length}</b></span>${nd.cases.length ? `<span>NORA <b>${nc('done')}/${nd.cases.length - nc('cancelled')}</b></span>` : ''}<span>On-call tasks <b>${openT.length}</b> open</span>${helpT.length ? `<span style="color:var(--crit)"><b>${helpT.length}</b> need help</span>` : ''}</div>`;
+  h += myToday();
   h += helpQueue();
   if (!alertsOn() || ('Notification' in window && Notification.permission === 'default')) h += `<div class="banner"><span>Turn on alerts so a help request or code blue rings on this phone.</span><button class="btn sm primary" data-act="alerts-enable">Turn on alerts</button></div>`;
   h += `<div class="legend-m"><span><i style="background:var(--ok)"></i>Running</span><span><i style="background:var(--warn)"></i>Waiting</span><span><i style="background:var(--muted)"></i>Finished</span><span><i style="background:var(--crit)"></i>Needs help</span><span>Tap a tile to open it</span></div>`;
@@ -1209,12 +1247,13 @@ const CANCEL_REASONS = ['Patient not fasting', 'No consent', 'Patient unfit / un
 function noraDay(date, create) { R.nora = R.nora || {}; let d = R.nora[date]; if (!d && create) d = R.nora[date] = { team: '', cases: [] }; return d; }
 function noraSort(a, b) { return (a.time || '99:99').localeCompare(b.time || '99:99') || (a.seq || 0) - (b.seq || 0); }
 function viewNora() {
-  const date = S.date; const day = noraDay(date) || { team: '', cases: [] }; const edit = canOt();
+  const date = S.date; const day = noraDay(date) || { team: '', cases: [] }; const edit = canNora(); const mg = canOtManage();
   const cs = day.cases.slice().sort(noraSort);
   const n = k => cs.filter(c => c.status === k).length;
   let h = `<div class="nowbar"><b class="k">NORA · ${esc(dayLabel(date))}</b><span><b>${n('pending')}</b> pending</span><span><b>${n('going')}</b> going</span><span><b>${n('done')}</b> done</span><span><b>${n('cancelled')}</b> cancelled</span></div>`;
   if (!edit && meStaff() && sync.code) h += pinBanner();
-  h += `<section class="panel"><div class="row"><h2>NORA team</h2></div>${edit ? `<input class="who" id="noraTeam" data-act="nora-team" value="${esc(day.team || '')}" placeholder="e.g. Dhahi – Dina, Haitham, Jahangir, Hossam" style="padding:7px;width:100%;max-width:none">` : `<p style="margin:0">${esc(day.team || 'Not set')}</p>`}
+  if (!edit && meStaff() && verified() && cs.length) h += `<p class="empty" style="margin:0">Only the NORA team of the day, list prep and the second / third on-call update this list.</p>`;
+  h += `<section class="panel"><div class="row"><h2>NORA team</h2></div>${mg ? `<input class="who" id="noraTeam" data-act="nora-team" value="${esc(day.team || '')}" placeholder="e.g. Dhahi – Dina, Haitham, Jahangir, Hossam" style="padding:7px;width:100%;max-width:none">` : `<p style="margin:0">${esc(day.team || 'Not set')}</p>`}
     <p class="empty" style="margin:0">Radiology, nuclear medicine, ERCP and GI endoscopy · ${esc(R.settings.morningStart)}–${esc(R.settings.morningEnd)}</p></section>`;
   if (!cs.length) h += `<p class="empty">No NORA list for this day yet.${edit ? ' Import the list below, or add cases one by one.' : ''}</p>`;
   const areas = [...new Set(cs.map(c => c.area || 'Other'))];
@@ -1227,11 +1266,11 @@ function viewNora() {
       ${c.status === 'cancelled' ? `<div class="reason">Reason: ${esc(c.reason || 'not given')}</div>` : ''}
       ${c.by ? `<div class="empty" style="font-size:12px">${esc(NORA_ST[c.status])} · ${esc(c.by)}${c.at ? ' · ' + hhmm(c.at) : ''}</div>` : ''}
       ${edit ? `<div class="nora-st">${Object.entries(NORA_ST).map(([k, v]) => `<button class="${k === 'cancelled' ? 'cx' : ''}" aria-pressed="${c.status === k}" data-act="nora-st" data-id="${c.id}" data-v="${k}">${v}</button>`).join('')}</div>
-        <div class="row"><span class="spacer"></span><button class="icon-btn" data-act="nora-del" data-id="${c.id}">Remove</button></div>` : ''}</article>`).join('')}</section>`;
+        ${mg ? `<div class="row"><span class="spacer"></span><button class="icon-btn" data-act="nora-del" data-id="${c.id}">Remove</button></div>` : ''}` : ''}</article>`).join('')}</section>`;
   });
   const cancelled = cs.filter(c => c.status === 'cancelled');
   if (cancelled.length) h += `<section class="panel"><h2>Cancellations · ${cancelled.length}</h2><ul class="log" style="color:var(--fg)">${cancelled.map(c => `<li>${esc(c.time ? c.time + ' ' : '')}${esc(c.proc)}${c.area ? ' (' + esc(c.area) + ')' : ''}: <b>${esc(c.reason || 'no reason given')}</b></li>`).join('')}</ul></section>`;
-  if (edit) h += `<section class="panel"><h2>Add a case</h2><div class="grid2">
+  if (mg) h += `<section class="panel"><h2>Add a case</h2><div class="grid2">
       <label class="f">Time<input type="time" id="nTime"></label>
       <label class="f">Area<input id="nArea" list="noraAreas" placeholder="e.g. MRI"><datalist id="noraAreas">${['Radiology', 'MRI', 'CT', 'Interventional radiology', 'Nuclear medicine', 'ERCP', 'GI endoscopy', 'Cardiology'].concat(areas).map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>
       <label class="f">Procedure<input id="nProc" placeholder="e.g. MRI brain, GA"></label>
@@ -1308,14 +1347,16 @@ function doNoraImport() {
   commit(); toast(`Imported ${n} case${n === 1 ? '' : 's'}${prep ? ' · ' + prep + ' with prepared details' : ''} for ${dates.map(d => dayLabel(d)).join(', ')}${bad.length ? ' – skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
 }
 function viewRooms() {
-  const date = S.date; const rooms = dayRooms(date); const edit = canOt();
+  const date = S.date; const rooms = dayRooms(date); const edit = canOtManage();
   const all = rooms.map(r => ({ r, cs: roomCases(r) }));
   const cnt = st => all.filter(x => roomState(x.cs) === st).length;
   const live = all.flatMap(x => x.cs.filter(c => c.status !== 'cancelled'));
   let h = `<div class="nowbar"><b class="k">OT · ${esc(dayLabel(date))}</b><span><b>${cnt('running')}</b> running</span><span><b>${cnt('waiting')}</b> waiting</span><span><b>${cnt('done')}</b> finished</span><span>Cases done <b>${live.filter(c => c.status === 'done').length}/${live.length}</b></span></div>`;
   if (!edit && meStaff() && sync.code) h += pinBanner();
   if (edit) h += `<div class="row"><span class="spacer"></span><button class="btn sm" data-act="rooms-import">Import rooms / cases from text</button></div>`;
-  h += `<div class="rooms">${all.map(({ r, cs }) => roomCard(r, cs, edit)).join('')}</div>`;
+  const mine = all.filter(x => nameIn(x.r.anaes, myName()));
+  if (!edit && mine.length) h += `<p class="empty" style="margin:0">You can update ${esc(mine.map(x => x.r.name).join(', '))}. Other rooms are updated by their own anaesthetist.</p>`;
+  h += `<div class="rooms">${(edit ? all : mine.concat(all.filter(x => !mine.includes(x)))).map(({ r, cs }) => roomCard(r, cs, canRoom(r))).join('')}</div>`;
   const dis = edit ? '' : 'disabled';
   const prev = Object.keys(R.ot || {}).filter(k => k < date).sort().pop();
   h += `<details class="panel" id="distPanel" ${!otDay(date) || ui.distOpen ? 'open' : ''}><summary style="cursor:pointer"><h2 style="display:inline">OT distribution · ${esc(dayLabel(date))}</h2></summary>
@@ -1884,7 +1925,8 @@ function viewShare() {
 }
 
 /* ---------- my work + who am I ---------- */
-function viewMine() {
+function viewMine() { return myToday() + viewMineBody(); }
+function viewMineBody() {
   const d = meDoc();
   if (!d && meStaff()) {
     const next = []; for (let i = 0; i < 45 && next.length < 3; i++) { const dt = addDays(keyDate(currentShiftDate()), i); const sh = R.shifts[dt];
@@ -1950,7 +1992,7 @@ async function pinSubmit(id) {
 }
 function becomeMe(id) {
   ui.meId = id; writePref('meId', id); $layer.innerHTML = ''; ui.shiftDate = currentShiftDate(); pointShift();
-  const r = role(); ui.tab = junior() ? 'mine' : r === 'third' ? 'map' : (ui.tab === 'team' ? 'board' : ui.tab); writePref('tab', ui.tab);
+  const r = role(); ui.tab = junior() || r === 'offduty' ? 'mine' : r === 'third' || id === 'observer' ? 'map' : r === 'second' ? 'board' : (ui.tab === 'team' ? 'board' : ui.tab); ui.moreTabs = false; writePref('tab', ui.tab);
   render(); window.scrollTo(0, 0);
 }
 async function signOut() {
@@ -1987,7 +2029,7 @@ async function finishSignin(res) {
   sync.token = res.token; sync.tokenStaff = res.staff; saveAuth(); ui.signinErr = ''; ui.invitePrefill = ''; ui.inviteOpen = false;
   ui.meId = res.staff; writePref('meId', res.staff); setStatus('connecting');
   await pull(true); await refreshPins(); ui.shiftDate = currentShiftDate(); pointShift();
-  ui.tab = junior() ? 'mine' : 'board'; writePref('tab', ui.tab); render(); toast('Signed in as ' + (res.name || myName()));
+  ui.tab = tabSet()[0]; ui.moreTabs = false; writePref('tab', ui.tab); render(); toast('Signed in as ' + (res.name || myName()));
 }
 async function inviteFor(id) {
   try {
@@ -2072,6 +2114,7 @@ document.addEventListener('click', e => {
   const viewOnly = new Set(['priv-no', 'signout', 'pin-open', 'hist-load', 'hist-no', 'demo', 'welcome', 'tab', 'plan-copy', 'close', 'close-bg', 'handover', 'otlist', 'copy', 'filter', 'goteam', 'copy-code', 'copy-link', 'whoami', 'setme', 'sync-join', 'sync-create', 'sync-leave', 'nav-prev', 'nav-next', 'nav-now', 'openshift', 'reset-no']);
   if (a === 'nora-copy') { showText('NORA summary', noraText()); return; }
   if (a === 'report') { showReport(); return; }
+  if (a === 'more-tabs') { ui.moreTabs = !ui.moreTabs; render(); return; }
   if (a === 'rep-days') { ui.repDays = Number(el.dataset.n); showReport(); return; }
   if (a === 'rep-copy') { showText('Report', reportText()); return; }
   if (a === 'alert-see') { const bar = document.querySelector('.alertbar'); if (bar) bar.remove(); ui.shiftDate = currentShiftDate(); pointShift(); ui.tab = 'map'; writePref('tab', 'map'); render(); window.scrollTo(0, 0); return; }
@@ -2085,7 +2128,8 @@ document.addEventListener('click', e => {
   if (a === 'prep-open') { showPrep(el.dataset.kind, el.dataset.room, el.dataset.case); return; }
   const noraActs = new Set(['nora-st', 'nora-add', 'nora-del', 'nora-import', 'cx-pick']);
   if (noraActs.has(a)) {
-    if (!canOt()) { toast(sync.code && meStaff() ? 'Enter your PIN to update the NORA list' : 'Choose who you are to update the NORA list'); return; }
+    const ok = a === 'nora-st' || a === 'cx-pick' ? canNora() : canOtManage();
+    if (!ok) { toast(denyMsg(a === 'nora-st' || a === 'cx-pick' ? 'Only the NORA team of the day and the second / third on-call update NORA cases' : 'Only list prep and the second / third on-call add or import NORA cases')); return; }
     if (a === 'nora-import') { showNoraImport(); return; }
     if (a === 'cx-pick') { cancelCase(el.closest('form').dataset.id, el.dataset.r); return; }
     const day = noraDay(S.date, true);
@@ -2107,8 +2151,9 @@ document.addEventListener('click', e => {
     const rn = [...document.querySelectorAll('.room-name')].find(x => x.textContent === el.dataset.name); if (rn) rn.scrollIntoView({ block: 'center' }); else window.scrollTo(0, 0); return; }
   if (a === 'room-open') { ui.openRooms = ui.openRooms || new Set(); const k = el.dataset.name; ui.openRooms.has(k) ? ui.openRooms.delete(k) : ui.openRooms.add(k); render(); return; }
   if (otActs.has(a)) {
-    if (!canOt()) { toast(sync.code && meStaff() ? 'Enter your PIN to update OT rooms' : 'Choose who you are to update OT rooms'); return; }
     const room = el.dataset.room ? realRoom(el.dataset.room) : null; const now = new Date().toISOString();
+    const roomAct = a === 'case-st' || a === 'case-add' || a === 'case-del';
+    if (roomAct ? !(el.dataset.kind === 'oc' ? canEdit() : canRoom(room)) : !canOtManage()) { toast(denyMsg(roomAct ? `Only ${room ? room.name + "'s" : 'the room\'s'} anaesthetist, list prep and the second / third on-call update this room` : 'Only list prep and the second / third on-call change the OT distribution')); return; }
     if (a === 'case-st') {
       const v = el.dataset.v;
       if (el.dataset.kind === 'oc') { const tk = S.tasks.find(x => x.id === el.dataset.case); if (tk) setTaskStatus(tk, { waiting: 'pending', running: 'active', done: 'done' }[v] || 'pending'); return; }
@@ -2270,11 +2315,11 @@ document.addEventListener('change', e => {
   const el = e.target; const a = el.dataset.act; if (!a) return;
   const d = el.dataset.id ? doc(el.dataset.id) : null;
   if (a === 'nora-team') {
-    if (!canOt()) { render(); toast('Enter your PIN to update the NORA list'); return; }
+    if (!canOtManage()) { render(); toast(denyMsg('Only list prep and the second / third on-call set the NORA team')); return; }
     noraDay(S.date, true).team = el.value.trim(); commit(); return;
   }
   if (a === 'room-f') {
-    if (!canOt()) { render(); toast('Enter your PIN to update OT rooms'); return; }
+    if (!canOtManage()) { render(); toast(denyMsg('Only list prep and the second / third on-call change the OT distribution')); return; }
     ui.distOpen = true; const rm = realRoom(el.dataset.room); if (!rm) return; const v = el.value.trim();
     if (el.dataset.f === 'name') { if (!v) { render(); return; } const old = rm.name; rm.name = v; S.tasks.forEach(t => { if (t.theatre === old) t.theatre = v; }); } else rm[el.dataset.f] = v;
     commit(); return;
@@ -2347,11 +2392,11 @@ document.addEventListener('submit', e => {
     if (!/^[0-9]{4,6}$/.test(p1)) { ui.signinErr = 'Use 4 to 6 digits for your PIN.'; render(); return; }
     if (p1 !== p2) { ui.signinErr = 'The two PINs do not match.'; render(); return; }
     (async () => { try { await finishSignin(await rpc('oncall_invite_redeem', { p_code: sync.code, p_invite: document.getElementById('ivCode').value, p_pin: p1 })); } catch (err) { ui.signinErr = 'No connection to the team server.'; render(); } })(); }
-  if (e.target.id === 'importForm') { e.preventDefault(); if (canOt()) doImport(); }
-  if (e.target.id === 'noraImportForm') { e.preventDefault(); if (canOt()) doNoraImport(); }
+  if (e.target.id === 'importForm') { e.preventDefault(); if (canOtManage()) doImport(); }
+  if (e.target.id === 'noraImportForm') { e.preventDefault(); if (canOtManage()) doNoraImport(); }
   if (e.target.id === 'rotaImportForm') { e.preventDefault(); if (canManage()) doRotaImport(); }
-  if (e.target.id === 'prepForm') { e.preventDefault(); if (canOt()) savePrep(e.target); }
-  if (e.target.id === 'cancelForm') { e.preventDefault(); if (canOt()) cancelCase(e.target.dataset.id, ((document.getElementById('cxOther') || {}).value || '').trim()); }
+  if (e.target.id === 'prepForm') { e.preventDefault(); if (canPrep(e.target.dataset.kind, e.target.dataset.room)) savePrep(e.target); }
+  if (e.target.id === 'cancelForm') { e.preventDefault(); if (canNora()) cancelCase(e.target.dataset.id, ((document.getElementById('cxOther') || {}).value || '').trim()); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $layer.innerHTML) { draft = null; $layer.innerHTML = ''; } });
 setInterval(() => { if (ui.tab === 'timeline' && !draft) { const n = $main.querySelectorAll('.now'); const L = shiftLen(); const nr = nowRel(); if (nr >= L) n.forEach(x => x.hidden = true); else n.forEach(x => x.style.left = (nr / 60 * 84) + 'px'); } }, 60000);
