@@ -60,6 +60,15 @@ Anyone signed in with their PIN can update rooms, including consultants who are 
 ## Hospital overview
 The **Hospital** tab shows every place anaesthesia is working on one screen, as tiles grouped by area: Main OT, cath lab and other rooms, Trauma OT, PACU, NORA areas, and the outside duties (APS / trauma / code blue, assessment, emergency call, OB/GYN). A tile is green when running, amber when waiting, grey when finished and red when someone needs help, and shows the current case, time running, progress and the anaesthetist. Tapping a tile opens that room or list. In the morning it shows the elective distribution; on call it shows only theatres with an on-call case, who holds the phone, and who is free now. Third on-calls land on this tab.
 
+## Admins
+Under the **Admin** tab, a second on-call names the board's admins (the first admin should add themselves). From then on only admins enter and change things: the rota, teams and staff, PINs and privacy, the OT distribution, adding or removing cases, prepared details, the NORA team and list, and all imports. Everyone else views, and ticks their own work. The admin decides with four switches what others may still do:
+- a room's anaesthetist starts and finishes the cases in their own room;
+- the day's NORA team marks NORA cases going, done or cancelled;
+- second on-calls assign on-call work, set doctor status and make the coverage plan at night;
+- anyone on shift updates free beds.
+
+First on-calls always post the calls and cases they receive and tick their own tasks. The Admin tab also gathers the imports (week schedule, OT list with cases, NORA list) and the report. An admin cannot remove themselves while they are the only admin. Until admins are named, the access rules below apply.
+
 ## Simpler view and access by role
 Each person sees the tabs their role uses every day; the rest are one tap away under **More**:
 - First on-call, trainee, and staff not on call: My work · Hospital · OT rooms · NORA

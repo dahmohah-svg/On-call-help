@@ -304,6 +304,7 @@ pre.handover { background: var(--bg); border: 1px solid var(--line); border-radi
   <div class="wrap">
     <nav class="tabs" role="tablist" id="tabs">
       <button role="tab" data-tab="mine" id="tabMine">My work</button>
+      <button role="tab" data-tab="admin" id="tabAdmin">Admin</button>
       <button role="tab" data-tab="map">Hospital</button>
       <button role="tab" data-tab="board">Board</button>
       <button role="tab" data-tab="plan">Coverage</button>
@@ -723,7 +724,8 @@ function meStaff() { return ui.meId && ui.meId !== 'observer' ? staffOf(ui.meId)
 // the tabs each kind of user needs every day; everything else is one tap away under More
 const TABSETS = { first: ['mine', 'map', 'ot', 'nora'], trainee: ['mine', 'map', 'ot', 'nora'], offduty: ['mine', 'map', 'ot', 'nora'],
   second: ['map', 'board', 'plan', 'tasks', 'ot', 'nora', 'team'], third: ['map', 'ot', 'nora', 'board', 'plan'] };
-function tabSet() { const r = role(); if (ui.meId === 'observer') return TABSETS.third; return TABSETS[r] || ['mine', 'map', 'board', 'plan', 'timeline', 'tasks', 'ot', 'nora', 'team']; }
+function tabSet() { const r = role(); const base = ui.meId === 'observer' ? TABSETS.third : TABSETS[r] || ['mine', 'map', 'board', 'plan', 'timeline', 'tasks', 'ot', 'nora', 'team'];
+  return (isAdmin() || (noAdmins() && canManage())) && sync.code ? ['admin'].concat(base.filter(x => x !== 'admin'), base.includes('team') ? [] : ['team']) : base; }
 function role() { const d = meDoc(); if (d) return d.tier; const sf = meStaff();
   if (sf && S && S.session === 'am') {   // the day's second and third on-calls run the morning too
     const night = R.shifts[S.date]; const onDay = night ? night.doctors.some(x => x.id === sf.id) : (R.teams.find(t => t.id === R.rota[S.date]) || { members: [] }).members.some(m => m.staffId === sf.id);
@@ -732,8 +734,15 @@ function role() { const d = meDoc(); if (d) return d.tier; const sf = meStaff();
 // on a team board where anyone has a PIN, only a phone signed in with its own PIN can change things
 function verified() { return !sync.code || !sync.locked || (!!sync.token && sync.tokenStaff === ui.meId); }
 function canEdit() { const r = role(); return r !== 'third' && r !== 'offduty' && verified(); }
-function canManage() { const r = role(); const sf = meStaff(); return (r === 'none' || r === 'second' || (!!sf && sf.tier === 'second')) && verified(); }
-function canAssign() { const r = role(); return (r === 'second' || r === 'none') && verified(); }
+/* ---------- admins: once named, only admins enter and change things; everyone else views and ticks their own work ---------- */
+function noAdmins() { return !(R && R.admins && R.admins.length); }
+function isAdmin() { if (ui.meId === 'observer') return false; if (!sync.code && role() === 'none') return true; const sf = meStaff(); return !!sf && verified() && (R.admins || []).includes(sf.id); }
+const PERM_DEF = { roomStatus: true, noraStatus: true, secAssign: true, beds: true };
+const PERM_TXT = { roomStatus: "A room's anaesthetist starts and finishes the cases in their own room", noraStatus: "The day's NORA team marks NORA cases going, done or cancelled",
+  secAssign: 'Second on-calls assign on-call work, set doctor status and make the coverage plan at night', beds: 'Anyone on shift updates free beds' };
+function perm(k) { return Object.assign({}, PERM_DEF, (R && R.perms) || {})[k]; }
+function canManage() { if (!noAdmins()) return isAdmin(); const r = role(); const sf = meStaff(); return (r === 'none' || r === 'second' || (!!sf && sf.tier === 'second')) && verified(); }
+function canAssign() { const r = role(); const sec = (r === 'second' || r === 'none') && verified(); return noAdmins() ? sec : isAdmin() || (perm('secAssign') && sec); }
 function canEditTask(t) { return canEdit() && (!junior() || !t.doctorId || t.doctorId === ui.meId || t.postedBy === myName()); }
 function canStatus(t) { return canEdit() && (!junior() || t.doctorId === ui.meId); }
 function myName() { const d = meDoc() || meStaff(); return d ? d.name : (ui.meId === 'observer' ? 'Observer' : ''); }
@@ -768,11 +777,13 @@ function render() {
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab)));
   const mb = document.getElementById('meBtn'); mb.textContent = (meDoc() || meStaff()) ? 'Me: ' + myName() : ui.meId === 'observer' ? 'Observer' : 'Who are you?'; mb.classList.toggle('unset', !ui.meId);
   const set = tabSet(); const all = set.length >= 9;
+  if (ui.tab === 'admin' && !isAdmin() && !(noAdmins() && canManage())) ui.tab = 'map';
   document.querySelectorAll('#tabs button[data-tab]').forEach(b => { b.hidden = !(all || ui.moreTabs || set.includes(b.dataset.tab) || b.dataset.tab === ui.tab); });
+  document.getElementById('tabAdmin').hidden = !(isAdmin() || (noAdmins() && canManage() && sync.code)) || (!set.includes('admin') && !ui.moreTabs && ui.tab !== 'admin');
   const mt = document.getElementById('moreTabs'); mt.hidden = all; mt.textContent = ui.moreTabs ? 'Fewer' : 'More';
   if (role() === 'third' && !ui.moreTabs) document.getElementById('tabMine').hidden = true;
   if (ui.tab === 'mine' && role() === 'third') ui.tab = 'map';
-  const views = { mine: viewMine, map: viewMap, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewRooms, nora: viewNora, team: viewTeam };
+  const views = { admin: viewAdmin, mine: viewMine, map: viewMap, board: viewBoard, plan: viewPlan, timeline: viewTimeline, tasks: viewTasks, ot: viewRooms, nora: viewNora, team: viewTeam };
   const needSignin = !!sync.code && sync.private && !signedIn();
   const welcome = needSignin || (!sync.code && R.example && readPref('demo') !== '1');
   document.getElementById('tabs').hidden = welcome;
@@ -953,14 +964,16 @@ function canOt() { if (!verified()) return false; const r = role(); return r ===
 function nameIn(text, name) { if (!text || !name) return false; const n = name.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return new RegExp('(^|[^a-z])' + n + '([^a-z]|$)', 'i').test(text); }
 function listPrepToday() { const id = ui.meId; return [S.date, S.date + '@am'].some(k => R.shifts[k] && R.shifts[k].doctors.some(d => d.id === id && d.listPrep)); }
 // seniors (2nd / 3rd on-call) and the day's list prep run the theatre and NORA lists: distribution, imports, adding and removing
-function canOtManage() { if (!verified() || ui.meId === 'observer') return false; const r = role(); const sf = meStaff();
+function canOtManage() { if (!verified() || ui.meId === 'observer') return false; if (!noAdmins()) return isAdmin(); const r = role(); const sf = meStaff();
   return r === 'none' || r === 'second' || r === 'third' || (!!sf && (sf.tier === 'second' || sf.tier === 'third')) || (!!sf && listPrepToday()); }
 // a room's own anaesthetist updates that room's cases
-function canRoom(r) { return canOtManage() || (!!r && verified() && !!meStaff() && nameIn(r.anaes, myName())); }
+function canRoom(r) { return canOtManage() || (!!r && (noAdmins() || perm('roomStatus')) && verified() && !!meStaff() && nameIn(r.anaes, myName())); }
 // the day's NORA team updates NORA cases
-function canNora() { return canOtManage() || (verified() && !!meStaff() && nameIn((noraDay(S.date) || {}).team, myName())); }
-function canPrep(kind, rid) { return kind === 'nora' ? canNora() : canRoom(realRoom(rid)); }
-function denyMsg(what) { return sync.code && meStaff() && !verified() ? 'Enter your PIN to make changes' : !meStaff() && role() !== 'none' ? 'Choose who you are first' : what; }
+function canNora() { return canOtManage() || ((noAdmins() || perm('noraStatus')) && verified() && !!meStaff() && nameIn((noraDay(S.date) || {}).team, myName())); }
+function canPrep(kind, rid) { if (!noAdmins()) return isAdmin(); return kind === 'nora' ? canNora() : canRoom(realRoom(rid)); }
+function canBeds() { return noAdmins() ? canOt() : isAdmin() || (perm('beds') && canOt()); }
+function denyMsg(what) { return sync.code && meStaff() && !verified() ? 'Enter your PIN to make changes' : !meStaff() && role() !== 'none' ? 'Choose who you are first' : !noAdmins() ? 'Only admins can change this. Ask ' + adminNames() + '.' : what; }
+function adminNames() { return (R.admins || []).map(id => (staffOf(id) || {}).name).filter(Boolean).join(' or ') || 'an admin'; }
 function hhmm(iso) { return iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''; }
 function minsSince(a, b) { return Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 60000)); }
 function durTxt(m) { return m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : m + ' min'; }
@@ -1009,7 +1022,7 @@ function caseButtons(rid, c) {
     : c.status === 'running' ? b('done', 'Finish', 'primary') + b('waiting', 'Not started', 'ghost')
     : c.status === 'done' ? b('running', 'Reopen', 'ghost') : b('waiting', 'Restore', 'ghost');
 }
-function roomCard(r, cs, edit) {
+function roomCard(r, cs, edit, full) {
   const st = roomState(cs); const run = cs.find(c => c.status === 'running'); const next = cs.find(c => c.status === 'waiting');
   const live = cs.filter(c => c.status !== 'cancelled'); const n = live.length, d = live.filter(c => c.status === 'done').length;
   const label = st === 'running' ? 'Running' + (run.startedAt ? ' · ' + durTxt(minsSince(run.startedAt)) : '') : st === 'waiting' ? (d ? 'Between cases' : 'Not started') : st === 'done' ? 'List finished' : 'No cases';
@@ -1027,10 +1040,28 @@ function roomCard(r, cs, edit) {
     ${open ? `<div>${cs.map(c => `<div class="case-row ${c.status}"><span class="rchip ${c.status}">${CASE_ST[c.status]}</span><span class="t">${esc(c.title)}</span>${loc(c)}
         ${c.notes ? `<span class="empty" style="font-size:12px">${esc(c.notes)}</span>` : ''}${c.startedAt ? `<span class="empty num">${hhmm(c.startedAt)}${c.endedAt ? '–' + hhmm(c.endedAt) + ' (' + durTxt(minsSince(c.startedAt, c.endedAt)) + ')' : ''}</span>` : ''}${c.kind === 'oc' ? '<span class="chip">On-call' + (c.who ? ' · ' + esc(c.who) : '') + '</span>' : ''}
         ${c.kind === 'el' ? prepBtn('ot', c, r.id) : ''}
-        ${edit ? '<span class="spacer"></span>' + caseButtons(r.id, c) + (c.kind === 'el' ? `<button class="icon-btn" data-act="case-del" data-room="${esc(r.id)}" data-case="${c.id}" aria-label="Remove case">Remove</button>` : '') : ''}</div>`).join('') || '<p class="empty" style="margin:0">No cases yet.</p>'}
-      ${edit ? `<div class="row" style="margin-top:6px"><input class="who" id="ca-${esc(r.name)}" placeholder="Case, e.g. Lap chole" style="flex:2 1 140px;padding:6px"><input class="who" id="cl-${esc(r.name)}" placeholder="Ward / bed" style="flex:1 1 90px;padding:6px"><button class="btn sm" data-act="case-add" data-room="${esc(r.id)}" data-name="${esc(r.name)}">Add</button></div>` : ''}</div>` : ''}
+        ${edit ? '<span class="spacer"></span>' + caseButtons(r.id, c) + (c.kind === 'el' && full ? `<button class="icon-btn" data-act="case-del" data-room="${esc(r.id)}" data-case="${c.id}" aria-label="Remove case">Remove</button>` : '') : ''}</div>`).join('') || '<p class="empty" style="margin:0">No cases yet.</p>'}
+      ${full ? `<div class="row" style="margin-top:6px"><input class="who" id="ca-${esc(r.name)}" placeholder="Case, e.g. Lap chole" style="flex:2 1 140px;padding:6px"><input class="who" id="cl-${esc(r.name)}" placeholder="Ward / bed" style="flex:1 1 90px;padding:6px"><button class="btn sm" data-act="case-add" data-room="${esc(r.id)}" data-name="${esc(r.name)}">Add</button></div>` : ''}</div>` : ''}
   </article>`;
 }
+function viewAdmin() {
+  const ad = (R.admins || []).map(id => staffOf(id)).filter(Boolean); const me = meStaff(); const can = isAdmin() || (noAdmins() && canManage());
+  let h = `<section class="panel"><div class="row"><h2>Admins</h2></div>
+    <p class="empty" style="margin:0">${noAdmins() ? 'No admins yet. Once you name admins, only they can enter and change the rota, staff, OT rooms, cases, prepared lists and NORA lists. Everyone else views, and ticks their own work as allowed below.' : 'Only admins enter and change the rota, staff, OT rooms, cases, prepared lists and NORA lists. Everyone else views, and ticks their own work as allowed below.'}</p>
+    <div class="row" style="gap:6px">${ad.map(x => `<span class="chip" style="font-size:14px">${esc(x.name)}${can && (ad.length > 1 || x.id !== (me && me.id)) ? ` <button class="icon-btn" data-act="adm-del" data-id="${x.id}" aria-label="Remove ${esc(x.name)} as admin">×</button>` : ''}</span>`).join('') || '<span class="empty">None yet.</span>'}</div>
+    ${can ? `<div class="row"><select class="who" id="admSel" style="padding:6px;max-width:none"><option value="">Choose a doctor…</option>${R.staff.filter(x => !(R.admins || []).includes(x.id)).sort((a, b) => a.name.localeCompare(b.name)).map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><button class="btn sm primary" data-act="adm-add">${noAdmins() ? 'Make admin' : 'Add admin'}</button></div>
+      ${noAdmins() && me ? `<p class="empty" style="margin:0;font-size:12.5px">Add yourself first, or you will lose access to this page.</p>` : ''}` : ''}</section>`;
+  if (!noAdmins()) h += `<section class="panel"><h2>What others may still do</h2>${Object.keys(PERM_DEF).map(k => `<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" data-act="perm" data-k="${k}" ${perm(k) ? 'checked' : ''} ${isAdmin() ? '' : 'disabled'} style="width:20px;height:20px;margin-top:2px;flex:none"><span style="flex:1">${esc(PERM_TXT[k])}</span></label>`).join('')}
+    <p class="empty" style="margin:0;font-size:12.5px">First on-calls always post the calls and cases they receive and tick their own tasks. Prepared details, adding or removing cases, the OT distribution, the NORA team and all imports are for admins only.</p></section>`;
+  if (can) h += `<section class="panel"><h2>Enter data</h2><p class="empty" style="margin:0">Paste the text prepared for you. Each import goes to the day written in its date line.</p>
+    <div class="grid2"><button class="btn primary" style="flex-direction:column;align-items:flex-start;text-align:left" data-act="rota-import">Week schedule<span style="font-weight:400;font-size:12px">rota · NORA teams · OT rooms</span></button>
+      <button class="btn" style="flex-direction:column;align-items:flex-start;text-align:left" data-act="rooms-import">OT list with cases<span style="font-weight:400;font-size:12px">rooms · cases · prepared details</span></button>
+      <button class="btn" style="flex-direction:column;align-items:flex-start;text-align:left" data-act="nora-import">NORA list<span style="font-weight:400;font-size:12px">cases · prepared details</span></button>
+      <button class="btn" data-act="report">Day / week report</button></div>
+    <div class="row"><button class="btn sm" data-act="tab" data-tab="team">Rota, teams, staff, PINs, privacy and history →</button></div></section>`;
+  return h;
+}
+
 /* ---------- "today for me": where this doctor is, in one card ---------- */
 function myToday() {
   const sf = meStaff(); if (!sf) return ''; const date = S.date, name = sf.name; const items = [];
@@ -1092,7 +1123,7 @@ function alertsPanel() {
 /* ---------- free beds: ICU and PACU, updated by anyone on shift ---------- */
 const BEDS = [['icu', 'ICU'], ['pacu', 'PACU'], ['hdu', 'Surgical HDU']];
 function viewBeds() {
-  const b = R.beds || {}; const edit = canOt();
+  const b = R.beds || {}; const edit = canBeds();
   return `<section class="zone"><div class="zone-h"><h2>Free beds</h2><span class="empty">Tap − / + when a bed frees up or is taken</span></div><div class="beds">${BEDS.map(([k, n]) => {
     const x = b[k] || {}; const v = x.free == null ? null : x.free;
     return `<div class="bed"><span class="bn">${n}</span><div class="bv">${edit ? `<button data-act="bed" data-k="${k}" data-d="-1" aria-label="One fewer free ${n} bed">−</button>` : ''}<b class="${v === 0 ? 'zero' : ''}">${v == null ? '–' : v}</b>${edit ? `<button data-act="bed" data-k="${k}" data-d="1" aria-label="One more free ${n} bed">+</button>` : ''}</div>
@@ -1355,8 +1386,8 @@ function viewRooms() {
   if (!edit && meStaff() && sync.code) h += pinBanner();
   if (edit) h += `<div class="row"><span class="spacer"></span><button class="btn sm" data-act="rooms-import">Import rooms / cases from text</button></div>`;
   const mine = all.filter(x => nameIn(x.r.anaes, myName()));
-  if (!edit && mine.length) h += `<p class="empty" style="margin:0">You can update ${esc(mine.map(x => x.r.name).join(', '))}. Other rooms are updated by their own anaesthetist.</p>`;
-  h += `<div class="rooms">${(edit ? all : mine.concat(all.filter(x => !mine.includes(x)))).map(({ r, cs }) => roomCard(r, cs, canRoom(r))).join('')}</div>`;
+  if (!edit && mine.length && canRoom(mine[0].r)) h += `<p class="empty" style="margin:0">You can update ${esc(mine.map(x => x.r.name).join(', '))}. Other rooms are updated by their own anaesthetist.</p>`;
+  h += `<div class="rooms">${(edit ? all : mine.concat(all.filter(x => !mine.includes(x)))).map(({ r, cs }) => roomCard(r, cs, canRoom(r), edit)).join('')}</div>`;
   const dis = edit ? '' : 'disabled';
   const prev = Object.keys(R.ot || {}).filter(k => k < date).sort().pop();
   h += `<details class="panel" id="distPanel" ${!otDay(date) || ui.distOpen ? 'open' : ''}><summary style="cursor:pointer"><h2 style="display:inline">OT distribution · ${esc(dayLabel(date))}</h2></summary>
@@ -1453,7 +1484,7 @@ function viewTeam() {
   const st = R.settings; const dis = canManage() ? '' : 'disabled';
   const today = keyDate(currentShiftDate());
   let h = exampleBanner() + viewShare();
-  if (!canManage()) h += `<div class="banner"><span>Only second on-calls can change the rota, teams and staff list. You can see them here.</span></div>`;
+  if (!canManage()) h += `<div class="banner"><span>Only ${noAdmins() ? 'second on-calls' : 'admins'} can change the rota, teams and staff list. You can see them here.</span></div>`;
   else h += `<section class="panel"><div class="row"><div><h2>Week schedule</h2><p class="empty" style="margin:0">One paste fills the on-call rota, NORA teams and OT rooms with their anaesthetists for the whole week.</p></div><span class="spacer"></span><button class="btn primary" data-act="rota-import">Import week schedule</button></div></section>`;
   // rota
   const days = Array.from({ length: 21 }, (_, i) => addDays(today, i - 1));
@@ -1824,7 +1855,7 @@ function mergeOt(b, m, t) {
 }
 function merge(base, mine, theirs) {
   theirs = migrate(theirs) || theirs; base = base ? (migrate(base) || base) : theirs;
-  const out = { ...theirs, example: !!(mine.example && theirs.example), settings: pick(base, mine, theirs, 'settings'), beds: pick(base, mine, theirs, 'beds'),
+  const out = { ...theirs, example: !!(mine.example && theirs.example), settings: pick(base, mine, theirs, 'settings'), beds: pick(base, mine, theirs, 'beds'), admins: pick(base, mine, theirs, 'admins'), perms: pick(base, mine, theirs, 'perms'),
     staff: mergeColl(base.staff, mine.staff, theirs.staff), teams: mergeColl(base.teams, mine.teams, theirs.teams), rota: {}, shifts: {},
     ot: mergeOt(base.ot || {}, mine.ot || {}, theirs.ot || {}), nora: mergeNora(base.nora || {}, mine.nora || {}, theirs.nora || {}) };
   for (const k of new Set([...Object.keys(mine.rota || {}), ...Object.keys(theirs.rota || {}), ...Object.keys(base.rota || {})])) {
@@ -2115,6 +2146,12 @@ document.addEventListener('click', e => {
   if (a === 'nora-copy') { showText('NORA summary', noraText()); return; }
   if (a === 'report') { showReport(); return; }
   if (a === 'more-tabs') { ui.moreTabs = !ui.moreTabs; render(); return; }
+  if (a === 'adm-add' || a === 'adm-del') {
+    if (!(isAdmin() || (noAdmins() && canManage()))) { toast(denyMsg('Only admins can change admins')); return; }
+    R.admins = (R.admins || []).slice();
+    if (a === 'adm-add') { const id = (document.getElementById('admSel') || {}).value; if (!id) { toast('Choose a doctor first'); return; } if (!R.admins.includes(id)) R.admins.push(id); toast((staffOf(id) || {}).name + ' is now an admin'); }
+    else { const me = meStaff(); if (R.admins.length === 1 && me && R.admins[0] === me.id) { toast('Add another admin before removing yourself'); return; } R.admins = R.admins.filter(x => x !== el.dataset.id); }
+    commit(); return; }
   if (a === 'rep-days') { ui.repDays = Number(el.dataset.n); showReport(); return; }
   if (a === 'rep-copy') { showText('Report', reportText()); return; }
   if (a === 'alert-see') { const bar = document.querySelector('.alertbar'); if (bar) bar.remove(); ui.shiftDate = currentShiftDate(); pointShift(); ui.tab = 'map'; writePref('tab', 'map'); render(); window.scrollTo(0, 0); return; }
@@ -2122,7 +2159,7 @@ document.addEventListener('click', e => {
   if (a === 'alerts-enable' || a === 'alerts-perm') { writePref('alerts', 'on'); beep();
     if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().then(() => { render(); toast('Alerts on for this phone'); }); else { render(); toast('Alerts on for this phone'); } return; }
   if (a === 'alerts-test') { beep(); try { navigator.vibrate && navigator.vibrate([400, 150, 400]); } catch (e) {} toast('This is how an alert sounds. Check the volume is up.'); return; }
-  if (a === 'bed') { if (!canOt()) { toast(sync.code && meStaff() ? 'Enter your PIN to update beds' : 'Choose who you are to update beds'); return; }
+  if (a === 'bed') { if (!canBeds()) { toast(denyMsg('Only admins update free beds')); return; }
     R.beds = R.beds || {}; const k = el.dataset.k; const x = R.beds[k] || {}; const v = Math.max(0, (x.free == null ? 0 : x.free) + Number(el.dataset.d));
     R.beds[k] = { free: v, at: new Date().toISOString(), by: myName() }; commit(); return; }
   if (a === 'prep-open') { showPrep(el.dataset.kind, el.dataset.room, el.dataset.case); return; }
@@ -2152,7 +2189,7 @@ document.addEventListener('click', e => {
   if (a === 'room-open') { ui.openRooms = ui.openRooms || new Set(); const k = el.dataset.name; ui.openRooms.has(k) ? ui.openRooms.delete(k) : ui.openRooms.add(k); render(); return; }
   if (otActs.has(a)) {
     const room = el.dataset.room ? realRoom(el.dataset.room) : null; const now = new Date().toISOString();
-    const roomAct = a === 'case-st' || a === 'case-add' || a === 'case-del';
+    const roomAct = a === 'case-st';
     if (roomAct ? !(el.dataset.kind === 'oc' ? canEdit() : canRoom(room)) : !canOtManage()) { toast(denyMsg(roomAct ? `Only ${room ? room.name + "'s" : 'the room\'s'} anaesthetist, list prep and the second / third on-call update this room` : 'Only list prep and the second / third on-call change the OT distribution')); return; }
     if (a === 'case-st') {
       const v = el.dataset.v;
@@ -2176,7 +2213,7 @@ document.addEventListener('click', e => {
     if (a === 'rooms-copy') { const from = R.ot[el.dataset.from]; R.ot[S.date] = { rooms: from.rooms.map(x => ({ id: uid(), name: x.name, list: x.list, anaes: x.anaes, cases: [] })) }; commit(); toast('Rooms copied – add today\'s cases'); return; }
   }
   const manage = new Set(['rota-import', 'invite', 'priv-ask', 'priv-yes', 'pin-reset', 'hist-restore', 'hist-yes', 'fill', 'team-add', 'team-del', 'tm-del', 'sf-add', 'sf-del', 'hol-add', 'hol-del', 'reset', 'reset-yes']);
-  if (manage.has(a)) { if (!canManage()) { toast('Only second on-calls can change the rota and teams'); return; } }
+  if (manage.has(a)) { if (!canManage()) { toast(noAdmins() ? 'Only second on-calls can change the rota and teams' : 'Only admins can change the rota, teams and staff'); return; } }
   else if (!canEdit() && !viewOnly.has(a)) { toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
   if (a === 'edit' && t && !canEditTask(t)) { toast("Only the second on-call can change another doctor's task"); return; }
   switch (a) {
@@ -2314,6 +2351,7 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const el = e.target; const a = el.dataset.act; if (!a) return;
   const d = el.dataset.id ? doc(el.dataset.id) : null;
+  if (a === 'perm') { if (!isAdmin()) { render(); toast(denyMsg('Only admins change this')); return; } R.perms = Object.assign({}, R.perms || {}, { [el.dataset.k]: el.checked }); commit(); toast('Saved'); return; }
   if (a === 'nora-team') {
     if (!canOtManage()) { render(); toast(denyMsg('Only list prep and the second / third on-call set the NORA team')); return; }
     noraDay(S.date, true).team = el.value.trim(); commit(); return;
@@ -2325,7 +2363,7 @@ document.addEventListener('change', e => {
     commit(); return;
   }
   const manageCh = new Set(['set-morning', 'set-ms', 'set-me', 'rota-team', 'tm-coord', 'tm-lp', 'tm-duty', 'tm-third', 'set-ph', 'tm-add', 'tm-name', 'sf-name', 'sf-tier', 'sf-obs', 'sf-ext', 'set-ws', 'set-we', 'set-hs', 'set-th', 'set-wk']);
-  if (manageCh.has(a)) { if (!canManage()) { render(); toast('Only second on-calls can change the rota and teams'); return; } }
+  if (manageCh.has(a)) { if (!canManage()) { render(); toast(noAdmins() ? 'Only second on-calls can change the rota and teams' : 'Only admins can change the rota, teams and staff'); return; } }
   else if (!canEdit() && a !== 'showdone') { render(); toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
   const tm = el.dataset.team ? R.teams.find(t => t.id === el.dataset.team) : null;
   const mem = tm && el.dataset.id ? tm.members.find(m => m.staffId === el.dataset.id) : null;
