@@ -725,18 +725,19 @@ function meStaff() { return ui.meId && ui.meId !== 'observer' ? staffOf(ui.meId)
 const TABSETS = { first: ['mine', 'map', 'ot', 'nora'], trainee: ['mine', 'map', 'ot', 'nora'], offduty: ['mine', 'map', 'ot', 'nora'],
   second: ['map', 'board', 'plan', 'tasks', 'ot', 'nora', 'team'], third: ['map', 'ot', 'nora', 'board', 'plan'] };
 function tabSet() { const r = role(); const base = ui.meId === 'observer' ? TABSETS.third : TABSETS[r] || ['mine', 'map', 'board', 'plan', 'timeline', 'tasks', 'ot', 'nora', 'team'];
-  return (isAdmin() || (noAdmins() && canManage())) && sync.code ? ['admin'].concat(base.filter(x => x !== 'admin'), base.includes('team') ? [] : ['team']) : base; }
+  return (isAdmin() || (noAdmins() && canManage()) || (!sync.accounts && sync.code && signedIn() && ['second', 'third'].includes((meStaff() || {}).tier))) && sync.code ? ['admin'].concat(base.filter(x => x !== 'admin'), base.includes('team') ? [] : ['team']) : base; }
 function role() { const d = meDoc(); if (d) return d.tier; const sf = meStaff();
   if (sf && S && S.session === 'am') {   // the day's second and third on-calls run the morning too
     const night = R.shifts[S.date]; const onDay = night ? night.doctors.some(x => x.id === sf.id) : (R.teams.find(t => t.id === R.rota[S.date]) || { members: [] }).members.some(m => m.staffId === sf.id);
     if (onDay && (sf.tier === 'second' || sf.tier === 'third')) return sf.tier;
   } if (sf) return sf.tier === 'third' ? 'third' : 'offduty'; return ui.meId === 'observer' ? 'third' : 'none'; }
 // on a team board where anyone has a PIN, only a phone signed in with its own PIN can change things
-function verified() { return !sync.code || !sync.locked || (!!sync.token && sync.tokenStaff === ui.meId); }
+function verified() { if (sync.accounts) return !!sync.token && (ui.meId === 'observer' || sync.tokenStaff === ui.meId);
+  return !sync.code || !sync.locked || (!!sync.token && sync.tokenStaff === ui.meId); }
 function canEdit() { const r = role(); return r !== 'third' && r !== 'offduty' && verified(); }
 /* ---------- admins: once named, only admins enter and change things; everyone else views and ticks their own work ---------- */
-function noAdmins() { return !(R && R.admins && R.admins.length); }
-function isAdmin() { if (ui.meId === 'observer') return false; if (!sync.code && role() === 'none') return true; const sf = meStaff(); return !!sf && verified() && (R.admins || []).includes(sf.id); }
+function noAdmins() { return !sync.accounts && !(R && R.admins && R.admins.length); }
+function isAdmin() { if (sync.accounts) return !!(sync.token && sync.account && sync.account.admin); if (ui.meId === 'observer') return false; if (!sync.code && role() === 'none') return true; const sf = meStaff(); return !!sf && verified() && (R.admins || []).includes(sf.id); }
 const PERM_DEF = { roomStatus: true, noraStatus: true, secAssign: true, beds: true };
 const PERM_TXT = { roomStatus: "A room's anaesthetist starts and finishes the cases in their own room", noraStatus: "The day's NORA team marks NORA cases going, done or cancelled",
   secAssign: 'Second on-calls assign on-call work, set doctor status and make the coverage plan at night', beds: 'Anyone on shift updates free beds' };
@@ -745,7 +746,7 @@ function canManage() { if (!noAdmins()) return isAdmin(); const r = role(); cons
 function canAssign() { const r = role(); const sec = (r === 'second' || r === 'none') && verified(); return noAdmins() ? sec : isAdmin() || (perm('secAssign') && sec); }
 function canEditTask(t) { return canEdit() && (!junior() || !t.doctorId || t.doctorId === ui.meId || t.postedBy === myName()); }
 function canStatus(t) { return canEdit() && (!junior() || t.doctorId === ui.meId); }
-function myName() { const d = meDoc() || meStaff(); return d ? d.name : (ui.meId === 'observer' ? 'Observer' : ''); }
+function myName() { const d = meDoc() || meStaff(); return d ? d.name : sync.accounts && sync.account ? sync.account.name : (ui.meId === 'observer' ? 'Observer' : ''); }
 function postLabel(d) { return inOT(d) ? 'In OT' + (d.post.theatre ? ' · ' + d.post.theatre : '') : 'Outside OT'; }
 function postChip(d) { return d.tier === 'first' ? `<span class="chip ${inOT(d) ? 'post-ot' : 'post-out'}">${esc(postLabel(d))}</span>` : ''; }
 function postSelect(d) {
@@ -775,11 +776,11 @@ function render() {
     (s.p1 ? `<span class="stat alert"><b>${s.p1}</b> top priority</span>` : '') +
     (s.late ? `<span class="stat alert"><b>${s.late}</b> past shift end</span>` : '');
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab)));
-  const mb = document.getElementById('meBtn'); mb.textContent = (meDoc() || meStaff()) ? 'Me: ' + myName() : ui.meId === 'observer' ? 'Observer' : 'Who are you?'; mb.classList.toggle('unset', !ui.meId);
+  const mb = document.getElementById('meBtn'); mb.textContent = sync.accounts && sync.account ? (sync.account.admin ? 'Admin · ' : '') + sync.account.name : (meDoc() || meStaff()) ? 'Me: ' + myName() : ui.meId === 'observer' ? 'Observer' : 'Who are you?'; mb.classList.toggle('unset', !ui.meId);
   const set = tabSet(); const all = set.length >= 9;
-  if (ui.tab === 'admin' && !isAdmin() && !(noAdmins() && canManage())) ui.tab = 'map';
+  if (ui.tab === 'admin' && !isAdmin() && !(noAdmins() && canManage()) && !(sync.code && !sync.accounts && signedIn())) ui.tab = 'map';
   document.querySelectorAll('#tabs button[data-tab]').forEach(b => { b.hidden = !(all || ui.moreTabs || set.includes(b.dataset.tab) || b.dataset.tab === ui.tab); });
-  document.getElementById('tabAdmin').hidden = !(isAdmin() || (noAdmins() && canManage() && sync.code)) || (!set.includes('admin') && !ui.moreTabs && ui.tab !== 'admin');
+  document.getElementById('tabAdmin').hidden = !(isAdmin() || (sync.code && !sync.accounts && signedIn() && ['second', 'third'].includes((meStaff() || {}).tier)) || (noAdmins() && canManage() && sync.code)) || (!set.includes('admin') && !ui.moreTabs && ui.tab !== 'admin');
   const mt = document.getElementById('moreTabs'); mt.hidden = all; mt.textContent = ui.moreTabs ? 'Fewer' : 'More';
   if (role() === 'third' && !ui.moreTabs) document.getElementById('tabMine').hidden = true;
   if (ui.tab === 'mine' && role() === 'third') ui.tab = 'map';
@@ -964,7 +965,7 @@ function canOt() { if (!verified()) return false; const r = role(); return r ===
 function nameIn(text, name) { if (!text || !name) return false; const n = name.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return new RegExp('(^|[^a-z])' + n + '([^a-z]|$)', 'i').test(text); }
 function listPrepToday() { const id = ui.meId; return [S.date, S.date + '@am'].some(k => R.shifts[k] && R.shifts[k].doctors.some(d => d.id === id && d.listPrep)); }
 // seniors (2nd / 3rd on-call) and the day's list prep run the theatre and NORA lists: distribution, imports, adding and removing
-function canOtManage() { if (!verified() || ui.meId === 'observer') return false; if (!noAdmins()) return isAdmin(); const r = role(); const sf = meStaff();
+function canOtManage() { if (sync.accounts) return isAdmin(); if (!verified() || ui.meId === 'observer') return false; if (!noAdmins()) return isAdmin(); const r = role(); const sf = meStaff();
   return r === 'none' || r === 'second' || r === 'third' || (!!sf && (sf.tier === 'second' || sf.tier === 'third')) || (!!sf && listPrepToday()); }
 // a room's own anaesthetist updates that room's cases
 function canRoom(r) { return canOtManage() || (!!r && (noAdmins() || perm('roomStatus')) && verified() && !!meStaff() && nameIn(r.anaes, myName())); }
@@ -1045,14 +1046,31 @@ function roomCard(r, cs, edit, full) {
   </article>`;
 }
 function viewAdmin() {
+  if (sync.accounts) {
+    if (!isAdmin()) return `<section class="panel"><h2>Admin</h2><p class="empty" style="margin:0">Only admins can open this page.</p></section>`;
+    return viewAccounts() + viewAdminTools();
+  }
+  const setup = sync.code && signedIn() && ['second', 'third'].includes((meStaff() || {}).tier) ? `<section class="panel" style="border:2px solid var(--accent)"><h2>Email sign-in with approval</h2>
+    <p style="margin:0">Switch the board to accounts: everyone signs in with email and password, new doctors request access with their grade, and admins approve them. Only admins then change the rota, rooms, prepared details and lists; others tick their own work.</p>
+    <div class="row"><button class="btn primary" data-act="acct-setup">Set up email sign-in – I become the first admin</button></div></section>`
+    : sync.code ? `<section class="panel"><h2>Email sign-in with approval</h2><p class="empty" style="margin:0">A second or third on-call signed in with their PIN can switch the board to email sign-in and become the first admin.</p></section>` : '';
+  return setup + viewAdminOld();
+}
+function viewAdminOld() {
   const ad = (R.admins || []).map(id => staffOf(id)).filter(Boolean); const me = meStaff(); const can = isAdmin() || (noAdmins() && canManage());
   let h = `<section class="panel"><div class="row"><h2>Admins</h2></div>
     <p class="empty" style="margin:0">${noAdmins() ? 'No admins yet. Once you name admins, only they can enter and change the rota, staff, OT rooms, cases, prepared lists and NORA lists. Everyone else views, and ticks their own work as allowed below.' : 'Only admins enter and change the rota, staff, OT rooms, cases, prepared lists and NORA lists. Everyone else views, and ticks their own work as allowed below.'}</p>
     <div class="row" style="gap:6px">${ad.map(x => `<span class="chip" style="font-size:14px">${esc(x.name)}${can && (ad.length > 1 || x.id !== (me && me.id)) ? ` <button class="icon-btn" data-act="adm-del" data-id="${x.id}" aria-label="Remove ${esc(x.name)} as admin">×</button>` : ''}</span>`).join('') || '<span class="empty">None yet.</span>'}</div>
     ${can ? `<div class="row"><select class="who" id="admSel" style="padding:6px;max-width:none"><option value="">Choose a doctor…</option>${R.staff.filter(x => !(R.admins || []).includes(x.id)).sort((a, b) => a.name.localeCompare(b.name)).map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><button class="btn sm primary" data-act="adm-add">${noAdmins() ? 'Make admin' : 'Add admin'}</button></div>
       ${noAdmins() && me ? `<p class="empty" style="margin:0;font-size:12.5px">Add yourself first, or you will lose access to this page.</p>` : ''}` : ''}</section>`;
+  if (!ad.length && !can) return '';
+  return h + viewAdminTools();
+}
+function viewAdminTools() {
+  let h = '';
   if (!noAdmins()) h += `<section class="panel"><h2>What others may still do</h2>${Object.keys(PERM_DEF).map(k => `<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" data-act="perm" data-k="${k}" ${perm(k) ? 'checked' : ''} ${isAdmin() ? '' : 'disabled'} style="width:20px;height:20px;margin-top:2px;flex:none"><span style="flex:1">${esc(PERM_TXT[k])}</span></label>`).join('')}
     <p class="empty" style="margin:0;font-size:12.5px">First on-calls always post the calls and cases they receive and tick their own tasks. Prepared details, adding or removing cases, the OT distribution, the NORA team and all imports are for admins only.</p></section>`;
+  const can = isAdmin() || (noAdmins() && canManage());
   if (can) h += `<section class="panel"><h2>Enter data</h2><p class="empty" style="margin:0">Paste the text prepared for you. Each import goes to the day written in its date line.</p>
     <div class="grid2"><button class="btn primary" style="flex-direction:column;align-items:flex-start;text-align:left" data-act="rota-import">Week schedule<span style="font-weight:400;font-size:12px">rota · NORA teams · OT rooms</span></button>
       <button class="btn" style="flex-direction:column;align-items:flex-start;text-align:left" data-act="rooms-import">OT list with cases<span style="font-weight:400;font-size:12px">rooms · cases · prepared details</span></button>
@@ -1214,6 +1232,7 @@ function viewMap() {
   const nd = (am && noraDay(date)) || { team: '', cases: [] }; const nc = k => nd.cases.filter(c => c.status === k).length;
   const openT = S.tasks.filter(t => t.status !== 'done');
   let h = `<div class="nowbar"><b class="k">Hospital · ${esc(dayLabel(date))}</b><span><b>${cnt('running')}</b> rooms running</span><span><b>${cnt('waiting')}</b> waiting</span><span><b>${cnt('done')}</b> finished</span><span>Cases <b>${live.filter(c => c.status === 'done').length}/${live.length}</b></span>${nd.cases.length ? `<span>NORA <b>${nc('done')}/${nd.cases.length - nc('cancelled')}</b></span>` : ''}<span>On-call tasks <b>${openT.length}</b> open</span>${helpT.length ? `<span style="color:var(--crit)"><b>${helpT.length}</b> need help</span>` : ''}</div>`;
+  if (sync.accounts && isAdmin() && sync.pending) h += `<div class="banner" style="border:2px solid var(--warn)"><span><b>${sync.pending} request${sync.pending === 1 ? '' : 's'} waiting</b> for your approval.</span><button class="btn sm primary" data-act="tab" data-tab="admin">Review</button></div>`;
   h += myToday();
   h += helpQueue();
   if (!alertsOn() || ('Notification' in window && Notification.permission === 'default')) h += `<div class="banner"><span>Turn on alerts so a help request or code blue rings on this phone.</span><button class="btn sm primary" data-act="alerts-enable">Turn on alerts</button></div>`;
@@ -1523,13 +1542,14 @@ function viewTeam() {
         ${canManage() && addOpts ? `<label class="post-l">Add to team<select class="who" data-act="tm-add" data-team="${tm.id}"><option value="">Choose doctor…</option>${addOpts}</select></label>` : ''}</div>`; }).join('') : '<p class="empty">No teams yet. Add your staff below, then create a team.</p>'}</section>`;
   // staff
   const sRow = x => `<tr><td><input type="text" id="sn-${x.id}" value="${esc(x.name)}" data-act="sf-name" data-id="${x.id}" aria-label="Name" ${dis}></td>
-    <td><select data-act="sf-tier" data-id="${x.id}" aria-label="Grade" ${dis}>${[['third', '3rd on-call'], ['second', '2nd on-call'], ['first', '1st on-call'], ['trainee', 'Trainee']].map(([k, l]) => `<option value="${k}" ${x.tier === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+    <td><select data-act="sf-grade" data-id="${x.id}" aria-label="Grade" ${dis}><option value="">—</option>${GRADES.map(g => `<option ${x.grade === g ? 'selected' : ''}>${g}</option>`).join('')}</select></td>
+    <td><select data-act="sf-tier" data-id="${x.id}" aria-label="On-call level" ${dis}>${[['third', '3rd on-call'], ['second', '2nd on-call'], ['first', '1st on-call'], ['trainee', 'Trainee']].map(([k, l]) => `<option value="${k}" ${x.tier === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
     <td style="text-align:center"><input type="checkbox" data-act="sf-obs" data-id="${x.id}" ${x.obs ? 'checked' : ''} ${x.tier !== 'first' ? 'disabled' : dis} aria-label="Usually Obs and Gyne"></td>
     <td><input type="text" id="se-${x.id}" value="${esc(x.ext)}" data-act="sf-ext" data-id="${x.id}" style="min-width:70px;width:80px" aria-label="Extension or bleep" ${dis}></td>
-    ${sync.code ? `<td>${sync.pins.has(x.id) ? `<span class="chip">Set</span>${canManage() ? ` <button class="btn sm ghost" data-act="pin-reset" data-id="${x.id}">Reset</button>` : ''}` : '<span class="empty">—</span>'}${canManage() && signedIn() ? ` <button class="btn sm ghost" data-act="invite" data-id="${x.id}">Invite</button>` : ''}</td>` : ''}
+    ${sync.code && !sync.accounts ? `<td>${sync.pins.has(x.id) ? `<span class="chip">Set</span>${canManage() ? ` <button class="btn sm ghost" data-act="pin-reset" data-id="${x.id}">Reset</button>` : ''}` : '<span class="empty">—</span>'}${canManage() && signedIn() ? ` <button class="btn sm ghost" data-act="invite" data-id="${x.id}">Invite</button>` : ''}</td>` : ''}
     <td>${canManage() ? `<button class="btn sm danger ghost" data-act="sf-del" data-id="${x.id}">Remove</button>` : ''}</td></tr>`;
   h += `<section class="panel"><div class="row"><h2>All staff · ${R.staff.length}</h2></div>
-    <div class="scroll-x"><table class="team-t"><thead><tr><th>Name</th><th>Grade</th><th>Obs/Gyne</th><th>Ext / bleep</th>${sync.code ? '<th>PIN</th>' : ''}<th></th></tr></thead><tbody>${R.staff.map(sRow).join('')}</tbody></table></div>
+    <div class="scroll-x"><table class="team-t"><thead><tr><th>Name</th><th>Grade</th><th>On-call level</th><th>Obs/Gyne</th><th>Ext / bleep</th>${sync.code && !sync.accounts ? '<th>PIN</th>' : ''}<th></th></tr></thead><tbody>${R.staff.map(sRow).join('')}</tbody></table></div>
     ${canManage() ? `<div class="row"><button class="btn sm" data-act="sf-add" data-tier="third">+ Third on-call</button><button class="btn sm" data-act="sf-add" data-tier="second">+ Second on-call</button><button class="btn sm" data-act="sf-add" data-tier="first">+ First on-call</button><button class="btn sm" data-act="sf-add" data-tier="obs">+ OB/GYN</button><button class="btn sm" data-act="sf-add" data-tier="trainee">+ Trainee</button></div>` : ''}</section>`;
   // shift times and holidays
   const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1778,11 +1798,29 @@ const sync = { code: readPref('board') || null, version: 0, base: null, dirty: f
 try { const p = JSON.parse(readPref('sync') || 'null'); if (p && sync.code && p.code === sync.code) Object.assign(sync, { version: p.version || 0, base: p.base || null, dirty: !!p.dirty, private: !!p.private }); } catch (e) {}
 let pushT = null;
 // PIN sign-in on this phone for the current team board
-try { const a = JSON.parse(readPref('auth') || 'null'); if (a && a.code === sync.code) { sync.token = a.token; sync.tokenStaff = a.staff; } } catch (e) {}
-sync.pins = new Set(); sync.locked = false;
-function saveAuth() { writePref('auth', sync.token ? JSON.stringify({ code: sync.code, token: sync.token, staff: sync.tokenStaff }) : ''); }
+try { const a = JSON.parse(readPref('auth') || 'null'); if (a && a.code === sync.code) { sync.token = a.token; sync.tokenStaff = a.staff; sync.account = a.account || null; } } catch (e) {}
+sync.pins = new Set(); sync.locked = false; sync.accounts = !!sync.account || readPref('accounts') === '1'; sync.pending = 0;
+function saveAuth() { writePref('auth', sync.token ? JSON.stringify({ code: sync.code, token: sync.token, staff: sync.tokenStaff, account: sync.account || null }) : ''); if (!sync.token) sync.account = null; }
+const GRADES = ['Consultant', 'Senior specialist', 'Specialist', 'Senior registrar', 'Registrar'];
+// email accounts: the server says whether this board uses them, and who this phone is signed in as
+function applyAcct(row) {
+  if (!row) return; if (row.accounts != null) { sync.accounts = !!row.accounts; writePref('accounts', sync.accounts ? '1' : ''); }
+  if (row.account) setAccount(row.account);
+}
+function setAccount(a) {
+  sync.account = a; sync.tokenStaff = a.staff || ('acct:' + a.id);
+  const id = a.staff && staffOf(a.staff) ? a.staff : 'observer';
+  if (ui.meId !== id) { ui.meId = id; writePref('meId', id); }
+  saveAuth();
+}
+async function refreshMe() {
+  if (!sync.code || !sync.accounts || !sync.token) return;
+  try { const r = await rpc('oncall_me', { p_code: sync.code, p_token: sync.token });
+    if (r.signin) { lockedOut(); return; } const was = JSON.stringify(sync.account); setAccount(r.account); sync.pending = r.pending || 0;
+    if (was !== JSON.stringify(sync.account) || sync.pending) safeRender(); } catch (e) {}
+}
 async function refreshPins() {
-  if (!sync.code) return;
+  if (!sync.code) return; if (sync.accounts) return refreshMe();
   try { const list = await rpc('oncall_pin_status2', { p_code: sync.code, p_token: sync.token || null }); sync.pins = new Set(list || []); sync.locked = sync.pins.size > 0; safeRender(); } catch (e) {}
 }
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -1879,6 +1917,7 @@ async function push() {
   try {
     const res = await rpc('oncall_save_board2', { p_code: sync.code, p_token: sync.token || null, p_state: snap, p_base: sync.version, p_by: myName() || null });
     if (res.signin && sync.private) { sync.busy = false; lockedOut(); return; }
+    if (res.denied) { R = migrate(res.state) || R; pointShift(); adopt(res); sync.dirty = false; save(); sync.busy = false; persistSync(); safeRender(); toast(res.error || 'Only admins can change this'); return; }
     if (res.signin) { sync.locked = true; setStatus('error', 'Enter your PIN to save'); sync.busy = false; persistSync(); refreshPins(); return; }
     if (res.ok) { sync.version = Number(res.version); sync.base = snap; sync.updatedBy = res.updated_by || myName(); sync.updatedAt = res.updated_at; sync.dirty = !same(R, snap); setStatus('live'); again = sync.dirty; }
     else if (res.missing) { setStatus('error', 'Team board not found'); }
@@ -1894,12 +1933,12 @@ async function pull(force) {
     let fetchIt = force;
     if (!fetchIt) {
       const v = await rpc('oncall_board_version2', { p_code: sync.code, p_token: sync.token || null });
-      if (v.signin) { lockedOut(); return; } if (v.missing) { setStatus('error', 'Team board not found'); return; }
+      applyAcct({ accounts: v.accounts }); if (v.signin) { lockedOut(); return; } if (v.missing) { setStatus('error', 'Team board not found'); return; }
       sync.private = !!v.private; fetchIt = Number(v.version) !== sync.version;
     }
     if (fetchIt) {
       const row = await rpc('oncall_get_board2', { p_code: sync.code, p_token: sync.token || null });
-      if (row.signin) { lockedOut(); return; } if (row.missing) { setStatus('error', 'Team board not found'); return; }
+      applyAcct(row); if (row.signin) { lockedOut(); return; } if (row.missing) { setStatus('error', 'Team board not found'); return; }
       sync.private = !!row.private;
       if (Number(row.version) >= sync.version) {
         if (sync.dirty) mergeIn(row); else { R = migrate(row.state) || blankRoot(); pointShift(); adopt(row); save(); safeRender(); checkAlerts(); }
@@ -1924,13 +1963,14 @@ async function joinBoard(raw) {
     try { const a = JSON.parse(readPref('auth') || 'null'); if (a && a.code === code) { sync.token = a.token; sync.tokenStaff = a.staff; } else { sync.token = null; sync.tokenStaff = null; } } catch (e) {}
     const row = await rpc('oncall_get_board2', { p_code: code, p_token: sync.token || null });
     if (row.missing) { toast('No team board with that code. Check it and try again.'); return; }
+    applyAcct(row);
     if (row.signin) { sync.code = code; writePref('board', code); sync.joinPrefill = ''; sync.private = true; persistSync(); lockedOut(); return; }
     sync.private = !!row.private;
     sync.code = code; writePref('board', code); R = migrate(row.state) || blankRoot(); ui.shiftDate = currentShiftDate(); pointShift(); adopt(row); sync.dirty = false; sync.joinPrefill = '';
     save(); persistSync(); setStatus('live'); render(); toast('Joined the team board');
     if (sync.tokenStaff && (readPref('auth') || '').indexOf(code) < 0) { sync.token = null; sync.tokenStaff = null; }
     await refreshPins();
-    if (!meStaff() && ui.meId !== 'observer') showWho();
+    if (!sync.accounts && !meStaff() && ui.meId !== 'observer') showWho();
   } catch (e) { toast(e.server ? 'Could not join: ' + e.message : 'No connection to the team server. Try again with signal.'); }
 }
 function leaveBoard() { sync.token = null; sync.tokenStaff = null; saveAuth(); sync.pins = new Set(); sync.locked = false; sync.code = null; sync.dirty = false; sync.base = null; sync.version = 0; writePref('board', ''); persistSync(); setStatus('local'); render(); toast('Left the team board. A copy stays on this device.'); }
@@ -2034,12 +2074,13 @@ async function signOut() {
 }
 // a private board this phone may not read: forget the local copy and ask to sign in
 function lockedOut() {
-  sync.private = true; sync.token = null; sync.tokenStaff = null; saveAuth();
+  sync.private = true; sync.token = null; sync.tokenStaff = null; sync.account = null; saveAuth();
   R = blankRoot(); sync.base = null; sync.version = 0; sync.dirty = false; ui.meId = ''; writePref('meId', ''); pointShift(); save(); persistSync();
   setStatus('error', 'Sign in to see the board'); $layer.innerHTML = ''; render();
 }
-function signedIn() { return !!(sync.token && sync.tokenStaff); }
+function signedIn() { return !!(sync.token && (sync.tokenStaff || sync.account)); }
 function viewSignin(err) {
+  if (sync.accounts) return viewAccountSignin();
   return `<section class="panel" style="max-width:560px;margin:24px auto 0"><h2>Private team board</h2>
     <p style="margin:0">Only department staff can see this board. Sign in with your name and PIN.</p>
     <form id="signinForm" class="grid2" autocomplete="off" style="align-items:end">
@@ -2055,6 +2096,115 @@ function viewSignin(err) {
         <button class="btn primary" type="submit">Start</button></form></details>
     <p class="empty" style="margin:0">No PIN and no invite? Ask a second on-call to send you an invite. Forgot your PIN? Ask for a new invite; it sets a new PIN.</p></section>`;
 }
+function viewAccountSignin() {
+  const req = ui.signMode === 'request'; const g = ui.reqGrade || '';
+  return `<section class="panel" style="max-width:560px;margin:24px auto 0;gap:14px">
+    <div><h2 style="font-size:26px">Anaesthesia on-call</h2><p class="empty" style="margin:4px 0 0">Department staff only. Requests are approved by the admin.</p></div>
+    <div class="row" style="gap:6px"><button class="btn ${req ? '' : 'primary'}" data-act="sign-mode" data-m="signin">Sign in</button><button class="btn ${req ? 'primary' : ''}" data-act="sign-mode" data-m="request">Request access</button></div>
+    ${req ? `<form id="acctReqForm" autocomplete="on" style="display:grid;gap:12px">
+      <div><div class="empty" style="font-weight:700;margin-bottom:6px">I am a</div><div class="who-list">${GRADES.map(x => `<button type="button" class="btn" data-act="pick-grade" data-g="${esc(x)}" aria-pressed="${g === x}">${esc(x)}</button>`).join('')}</div></div>
+      <label class="f">Full name<input id="rqName" autocomplete="name" autocapitalize="words" required value="${esc(ui.rqName || '')}"></label>
+      <label class="f">Email<input id="rqEmail" type="email" autocomplete="email" required value="${esc(ui.rqEmail || '')}"></label>
+      <div class="grid2"><label class="f">Password (8 or more characters)<input id="rqPw" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label class="f">Repeat password<input id="rqPw2" type="password" autocomplete="new-password" minlength="8" required></label></div>
+      <button class="btn primary" type="submit">Send request</button></form>`
+    : `<form id="acctLoginForm" autocomplete="on" style="display:grid;gap:12px">
+      <label class="f">Email<input id="lgEmail" type="email" autocomplete="username" required value="${esc(ui.rqEmail || '')}"></label>
+      <label class="f">Password<input id="lgPw" type="password" autocomplete="current-password" required></label>
+      <button class="btn primary" type="submit">Sign in</button></form>`}
+    ${ui.signinMsg ? `<p style="margin:0;color:var(--ok);font-weight:700">${esc(ui.signinMsg)}</p>` : ''}
+    ${ui.signinErr ? `<p class="late" style="margin:0">${esc(ui.signinErr)}</p>` : ''}
+    <p class="empty" style="margin:0;font-size:12.5px">Forgot your password? Ask the admin to reset it. Your email is used only to sign in.</p></section>`;
+}
+async function finishAccount(res) {
+  sync.token = res.token; sync.accounts = true; writePref('accounts', '1'); ui.signinErr = ''; ui.signinMsg = '';
+  setStatus('connecting'); setAccount(res.account); await pull(true); setAccount(res.account); await refreshMe();
+  ui.shiftDate = currentShiftDate(); pointShift(); ui.tab = tabSet()[0]; ui.moreTabs = false; writePref('tab', ui.tab); $layer.innerHTML = ''; render();
+  toast(res.first ? 'Email sign-in is on. You are the admin.' : 'Signed in as ' + res.account.name);
+}
+async function accountLogin() {
+  const v = id => (document.getElementById(id) || {}).value || ''; ui.rqEmail = v('lgEmail').trim();
+  try { const res = await rpc('oncall_login', { p_code: sync.code, p_email: ui.rqEmail, p_password: v('lgPw') });
+    if (!res.ok) { ui.signinErr = res.error || 'That did not work.'; ui.signinMsg = ''; render(); return; } await finishAccount(res);
+  } catch (e) { ui.signinErr = 'No connection to the team server.'; render(); }
+}
+async function accountRequest(fromSetup) {
+  const v = id => (document.getElementById(id) || {}).value || ''; ui.rqName = v('rqName').trim(); ui.rqEmail = v('rqEmail').trim();
+  const fail = m => { ui.signinErr = m; ui.signinMsg = ''; fromSetup ? showSetup() : render(); };
+  if (!ui.reqGrade) return fail('Choose your grade.');
+  if (v('rqPw').length < 8) return fail('Use a password of at least 8 characters.');
+  if (v('rqPw') !== v('rqPw2')) return fail('The two passwords do not match.');
+  try { const res = await rpc('oncall_request_access', { p_code: sync.code, p_token: sync.token || null, p_name: ui.rqName, p_grade: ui.reqGrade, p_email: ui.rqEmail, p_password: v('rqPw') });
+    if (!res.ok) return fail(res.error || 'That did not work.');
+    if (res.token) { await finishAccount(res); return; }
+    ui.signinErr = ''; ui.signMode = 'signin'; ui.signinMsg = 'Request sent. You can sign in as soon as the admin approves it.'; render();
+  } catch (e) { fail(e.server ? 'Email sign-in is not switched on in the database yet. The database update (supabase/oncall_accounts.sql) must be run first.' : 'No connection to the team server.'); }
+}
+// first admin: a second or third on-call, signed in with their PIN, switches the board to email sign-in
+function showSetup() {
+  const g = ui.reqGrade || ''; const me = meStaff();
+  $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="acctSetupForm" autocomplete="on">
+    <div class="row"><h3>Set up email sign-in</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
+    <p style="margin:0">You become the first admin${me ? ', linked to <b>' + esc(me.name) + '</b> on the rota' : ''}. From then on everyone signs in with email and password, new doctors request access, and you approve them. PINs stop working, and only admins can change the rota and lists.</p>
+    <div><div class="empty" style="font-weight:700;margin-bottom:6px">I am a</div><div class="who-list">${GRADES.map(x => `<button type="button" class="btn" data-act="pick-grade" data-g="${esc(x)}" data-setup="1" aria-pressed="${g === x}">${esc(x)}</button>`).join('')}</div></div>
+    <label class="f">Full name<input id="rqName" autocomplete="name" required value="${esc(ui.rqName || (me ? me.name : ''))}"></label>
+    <label class="f">Email<input id="rqEmail" type="email" autocomplete="email" required value="${esc(ui.rqEmail || '')}"></label>
+    <div class="grid2"><label class="f">Password (8 or more characters)<input id="rqPw" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="f">Repeat password<input id="rqPw2" type="password" autocomplete="new-password" minlength="8" required></label></div>
+    ${ui.signinErr ? `<p class="late" style="margin:0">${esc(ui.signinErr)}</p>` : ''}
+    <div class="row"><span class="spacer"></span><button type="button" class="btn" data-act="close">Cancel</button><button type="submit" class="btn primary">Switch on email sign-in</button></div></form></div>`;
+}
+function showAccount(err, msg) {
+  const a = sync.account || {}; const sf = meStaff();
+  $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="pwForm" autocomplete="on">
+    <div class="row"><h3>${esc(a.name || 'My account')}</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
+    <p style="margin:0">${esc(a.grade || '')}${a.admin ? ' · <b>Admin</b>' : ''}<br><span class="empty">${esc(a.email || '')}</span><br>${sf ? 'On the rota as <b>' + esc(sf.name) + '</b>' : '<span class="empty">Not linked to a rota name yet – the admin links it.</span>'}</p>
+    <details><summary style="cursor:pointer;font-weight:700">Change password</summary><div class="grid2" style="margin-top:8px">
+      <label class="f">Current password<input id="pwOld" type="password" autocomplete="current-password"></label>
+      <label class="f">New password<input id="pwNew" type="password" autocomplete="new-password" minlength="8"></label></div>
+      <div class="row"><button class="btn sm primary" type="submit">Save new password</button></div></details>
+    ${err ? `<p class="late" style="margin:0">${esc(err)}</p>` : ''}${msg ? `<p style="margin:0;color:var(--ok);font-weight:700">${esc(msg)}</p>` : ''}
+    <div class="row"><span class="spacer"></span><button type="button" class="btn" data-act="signout">Sign out on this phone</button></div></form></div>`;
+}
+
+/* ---------- admin: approve requests, link rota names, admins ---------- */
+async function loadAccounts() {
+  try { const r = await rpc('oncall_accounts_list', { p_code: sync.code, p_token: sync.token || null }); ui.accts = r.ok ? r.accounts : []; ui.acctErr = r.ok ? '' : r.error;
+    sync.pending = (ui.accts || []).filter(x => x.status === 'pending').length; } catch (e) { ui.acctErr = 'No connection to the team server.'; }
+  safeRender();
+}
+function bestStaff(name) {
+  const n = String(name || '').toLowerCase(); const taken = new Set((ui.accts || []).filter(x => x.staff && x.status !== 'disabled').map(x => x.staff));
+  const hit = R.staff.filter(x => !taken.has(x.id) && (nameIn(name, x.name) || n.includes(x.name.toLowerCase())));
+  return hit.length === 1 ? hit[0].id : '';
+}
+function staffSelect(a, sel) {
+  const taken = new Set((ui.accts || []).filter(x => x.staff && x.id !== a.id && x.status !== 'disabled').map(x => x.staff));
+  return `<select class="who" data-act="acct-link" data-id="${a.id}" id="lk-${a.id}" style="padding:6px;max-width:220px"><option value="">Not on the rota</option>${R.staff.slice().sort((x, y) => x.name.localeCompare(y.name)).map(x => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''} ${taken.has(x.id) ? 'disabled' : ''}>${esc(x.name)}${taken.has(x.id) ? ' (linked)' : ''}</option>`).join('')}</select>`;
+}
+function viewAccounts() {
+  if (!ui.accts) { if (!ui.acctLoading) { ui.acctLoading = true; loadAccounts().then(() => { ui.acctLoading = false; }); } return `<section class="panel"><h2>Accounts</h2><p class="empty" style="margin:0">Loading…</p></section>`; }
+  const pend = ui.accts.filter(x => x.status === 'pending'), ok = ui.accts.filter(x => x.status === 'approved'), off = ui.accts.filter(x => x.status === 'disabled');
+  const meId = sync.account && sync.account.id;
+  let h = `<section class="panel" ${pend.length ? 'style="border:2px solid var(--warn)"' : ''}><div class="row"><h2>Waiting for approval · ${pend.length}</h2><span class="spacer"></span><button class="btn sm ghost" data-act="acct-refresh">Refresh</button></div>
+    ${ui.acctErr ? `<p class="late" style="margin:0">${esc(ui.acctErr)}</p>` : ''}
+    ${pend.length ? pend.map(a => `<div class="case-row" style="align-items:flex-start"><div style="flex:1 1 200px"><b>${esc(a.name)}</b> · ${esc(a.grade)}<br><span class="empty">${esc(a.email)} · ${esc(ago(a.at))}</span></div>
+      <label class="post-l">Rota name ${staffSelect(a, bestStaff(a.name))}</label>
+      <button class="btn sm primary" data-act="acct-approve" data-id="${a.id}">Approve</button><button class="btn sm ghost danger" data-act="acct-reject" data-id="${a.id}">Reject</button></div>`).join('')
+      : '<p class="empty" style="margin:0">No requests waiting. Send doctors the team link; they choose “Request access”.</p>'}</section>`;
+  h += `<section class="panel"><h2>Approved · ${ok.length}</h2><div class="scroll-x"><table class="team-t"><thead><tr><th>Name</th><th>Grade</th><th>Rota name</th><th>Admin</th><th></th></tr></thead><tbody>${ok.map(a => `<tr>
+      <td><b>${esc(a.name)}</b><br><span class="empty" style="font-size:12px">${esc(a.email)}</span></td><td>${esc(a.grade)}</td><td>${staffSelect(a, a.staff || '')}</td>
+      <td><input type="checkbox" data-act="acct-admin" data-id="${a.id}" ${a.admin ? 'checked' : ''} aria-label="Admin" style="width:20px;height:20px"></td>
+      <td style="white-space:nowrap"><button class="btn sm ghost" data-act="acct-reset" data-id="${a.id}">New password</button>${a.id !== meId ? `<button class="btn sm ghost danger" data-act="acct-disable" data-id="${a.id}">Switch off</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+    ${off.length ? `<details><summary class="empty" style="cursor:pointer">Switched off · ${off.length}</summary>${off.map(a => `<div class="case-row"><span>${esc(a.name)} · ${esc(a.grade)} · <span class="empty">${esc(a.email)}</span></span><span class="spacer"></span><button class="btn sm" data-act="acct-enable" data-id="${a.id}">Switch on</button></div>`).join('')}</details>` : ''}</section>`;
+  return h;
+}
+async function acctAction(id, action, staff, password) {
+  try { const r = await rpc('oncall_account_set', { p_code: sync.code, p_token: sync.token, p_id: Number(id), p_action: action, p_staff: staff == null ? null : staff, p_password: password || null });
+    if (!r.ok) { toast(r.error || 'That did not work.'); } return r.ok;
+  } catch (e) { toast('No connection to the team server.'); return false; }
+}
+function tempPassword() { const a = 'abcdefghjkmnpqrstuvwxyz23456789'; let o = ''; crypto.getRandomValues(new Uint8Array(10)).forEach(b => o += a[b % a.length]); return o; }
 async function finishSignin(res) {
   if (!res || !res.ok) { ui.signinErr = (res && res.error) || 'That did not work.'; render(); return; }
   sync.token = res.token; sync.tokenStaff = res.staff; saveAuth(); ui.signinErr = ''; ui.invitePrefill = ''; ui.inviteOpen = false;
@@ -2077,6 +2227,8 @@ async function inviteFor(id) {
 }
 function viewPrivacy() {
   if (!sync.code) return '';
+  if (sync.accounts) return `<section class="panel"><div class="row"><h2>Privacy</h2><span class="spacer"></span><span class="rchip running">Private · email sign-in</span></div>
+    <p style="margin:0">Only approved accounts can see this board. Admins approve new requests on the Admin tab.</p></section>`;
   const n = sync.pins.size, total = R.staff.length;
   return `<section class="panel"><div class="row"><h2>Privacy</h2><span class="spacer"></span><span class="rchip ${sync.private ? 'running' : 'waiting'}">${sync.private ? 'Private' : 'Open to anyone with the link'}</span></div>
     <p style="margin:0">${sync.private ? 'Only staff signed in with their PIN can see this board. New staff need an invite from a second or third on-call (Invite button in All staff below).' : 'Right now anyone with the team link can see the board. Make it private so only signed-in staff can see it.'}</p>
@@ -2085,6 +2237,7 @@ function viewPrivacy() {
       : `<p class="empty" style="margin:0">A second or third on-call signed in with their PIN can change this.</p>`}</section>`;
 }
 function pinBanner() {
+  if (sync.accounts) return '';
   if (!sync.code || !meStaff() || (sync.token && sync.tokenStaff === ui.meId)) return '';
   return sync.locked
     ? `<div class="banner" style="border:2px solid var(--accent)"><span><b>Enter your PIN to make changes as ${esc(myName())}.</b> Until then this phone can only view.</span><button class="btn sm primary" data-act="pin-open">Enter PIN</button></div>`
@@ -2135,6 +2288,7 @@ document.getElementById('tabs').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]'); if (!b) return;
   ui.tab = b.dataset.tab; ui.confirmReset = false; writePref('tab', ui.tab); render(); window.scrollTo(0, 0);
   if (ui.tab === 'team') refreshPins();   // show fresh PIN / invite state to whoever manages staff
+  if (ui.tab === 'admin' && sync.accounts) { ui.accts = null; render(); }
 });
 
 document.addEventListener('click', e => {
@@ -2146,6 +2300,18 @@ document.addEventListener('click', e => {
   if (a === 'nora-copy') { showText('NORA summary', noraText()); return; }
   if (a === 'report') { showReport(); return; }
   if (a === 'more-tabs') { ui.moreTabs = !ui.moreTabs; render(); return; }
+  if (a === 'sign-mode') { ui.signMode = el.dataset.m; ui.signinErr = ''; ui.signinMsg = ''; render(); return; }
+  if (a === 'pick-grade') { ['rqName', 'rqEmail'].forEach(id => { const x = document.getElementById(id); if (x) ui[id] = x.value; }); ui.reqGrade = el.dataset.g; if (el.dataset.setup) showSetup(); else render(); return; }
+  if (a === 'acct-setup') { ui.signinErr = ''; showSetup(); return; }
+  if (a === 'acct-refresh') { ui.accts = null; render(); return; }
+  if (a === 'acct-approve' || a === 'acct-reject' || a === 'acct-disable' || a === 'acct-enable' || a === 'acct-reset') {
+    if (!isAdmin()) { toast('Only admins can do this'); return; } const id = el.dataset.id; const acc = (ui.accts || []).find(x => String(x.id) === id) || {};
+    if (a === 'acct-approve') { const staff = (document.getElementById('lk-' + id) || {}).value || '';
+      acctAction(id, 'approve', staff).then(ok => { if (ok) { const sf = staffOf(staff); if (sf && acc.grade) { sf.grade = acc.grade; commit(); } toast(acc.name + ' approved'); } loadAccounts(); }); return; }
+    if (a === 'acct-reset') { const pw = tempPassword(); acctAction(id, 'reset', null, pw).then(ok => { if (ok) showText('New password for ' + acc.name, `On-Call Board – new password\nEmail: ${acc.email}\nPassword: ${pw}\nSign in and change it under your name at the top. Do not share it.`); }); return; }
+    if (a === 'acct-reject' && ui.acctConfirm !== 'r' + id) { ui.acctConfirm = 'r' + id; toast('Tap Reject again to remove this request'); return; }
+    if (a === 'acct-disable' && ui.acctConfirm !== 'd' + id) { ui.acctConfirm = 'd' + id; toast('Tap Switch off again to confirm'); return; }
+    ui.acctConfirm = ''; acctAction(id, { 'acct-reject': 'reject', 'acct-disable': 'disable', 'acct-enable': 'enable' }[a]).then(() => loadAccounts()); return; }
   if (a === 'adm-add' || a === 'adm-del') {
     if (!(isAdmin() || (noAdmins() && canManage()))) { toast(denyMsg('Only admins can change admins')); return; }
     R.admins = (R.admins || []).slice();
@@ -2217,7 +2383,7 @@ document.addEventListener('click', e => {
   else if (!canEdit() && !viewOnly.has(a)) { toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
   if (a === 'edit' && t && !canEditTask(t)) { toast("Only the second on-call can change another doctor's task"); return; }
   switch (a) {
-    case 'whoami': if (sync.private && !signedIn()) { render(); break; } showWho(); break;
+    case 'whoami': if (sync.private && !signedIn()) { render(); break; } if (sync.accounts) { showAccount(); break; } showWho(); break;
     case 'rota-import': showRotaImport(); break;
     case 'invite': inviteFor(id); break;
     case 'priv-ask': ui.confirmPrivate = true; render(); break;
@@ -2362,6 +2528,10 @@ document.addEventListener('change', e => {
     if (el.dataset.f === 'name') { if (!v) { render(); return; } const old = rm.name; rm.name = v; S.tasks.forEach(t => { if (t.theatre === old) t.theatre = v; }); } else rm[el.dataset.f] = v;
     commit(); return;
   }
+  if (a === 'sf-grade') { if (!canManage()) { render(); toast(denyMsg('Only admins change grades')); return; } const sf = staffOf(el.dataset.id); if (sf) { sf.grade = el.value; commit(); } return; }
+  if (a === 'acct-link') { if (!isAdmin()) return; const acc = (ui.accts || []).find(x => String(x.id) === el.dataset.id); if (!acc || acc.status !== 'approved') return;
+    acctAction(acc.id, 'link', el.value).then(ok => { if (ok) { const sf = staffOf(el.value); if (sf && !sf.grade) { sf.grade = acc.grade; commit(); } toast('Linked'); } loadAccounts(); }); return; }
+  if (a === 'acct-admin') { if (!isAdmin()) return; acctAction(el.dataset.id, el.checked ? 'admin_on' : 'admin_off').then(() => { loadAccounts(); refreshMe(); }); return; }
   const manageCh = new Set(['set-morning', 'set-ms', 'set-me', 'rota-team', 'tm-coord', 'tm-lp', 'tm-duty', 'tm-third', 'set-ph', 'tm-add', 'tm-name', 'sf-name', 'sf-tier', 'sf-obs', 'sf-ext', 'set-ws', 'set-we', 'set-hs', 'set-th', 'set-wk']);
   if (manageCh.has(a)) { if (!canManage()) { render(); toast(noAdmins() ? 'Only second on-calls can change the rota and teams' : 'Only admins can change the rota, teams and staff'); return; } }
   else if (!canEdit() && a !== 'showdone') { render(); toast(role() === 'offduty' ? 'You are not on this shift – view only' : 'Observer view – read-only'); return; }
@@ -2433,6 +2603,11 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'importForm') { e.preventDefault(); if (canOtManage()) doImport(); }
   if (e.target.id === 'noraImportForm') { e.preventDefault(); if (canOtManage()) doNoraImport(); }
   if (e.target.id === 'rotaImportForm') { e.preventDefault(); if (canManage()) doRotaImport(); }
+  if (e.target.id === 'acctLoginForm') { e.preventDefault(); accountLogin(); return; }
+  if (e.target.id === 'acctReqForm') { e.preventDefault(); accountRequest(false); return; }
+  if (e.target.id === 'acctSetupForm') { e.preventDefault(); accountRequest(true); return; }
+  if (e.target.id === 'pwForm') { e.preventDefault(); (async () => { try { const r = await rpc('oncall_password_change', { p_code: sync.code, p_token: sync.token, p_old: document.getElementById('pwOld').value, p_new: document.getElementById('pwNew').value });
+      r.ok ? showAccount('', 'Password changed') : showAccount(r.error || 'That did not work.'); } catch (err) { showAccount('No connection to the team server.'); } })(); return; }
   if (e.target.id === 'prepForm') { e.preventDefault(); if (canPrep(e.target.dataset.kind, e.target.dataset.room)) savePrep(e.target); }
   if (e.target.id === 'cancelForm') { e.preventDefault(); if (canNora()) cancelCase(e.target.dataset.id, ((document.getElementById('cxOther') || {}).value || '').trim()); }
 });
@@ -2449,7 +2624,7 @@ if (R.example) save();
 if (ui.meId && ui.meId !== 'observer' && !staffOf(ui.meId)) ui.meId = '';
 if (!readPref('tab') && junior()) ui.tab = 'mine';
 render(); renderSyncChip();
-if (sync.code && !ui.meId && R.staff.length) showWho();
+if (sync.code && !sync.accounts && !ui.meId && R.staff.length) showWho();
 if (sync.code) { refreshPins(); setInterval(() => { if (!document.hidden) refreshPins(); }, 60000); }
 // roll over to the next shift when the current one ends, unless someone is looking at another date
 setInterval(() => { const c = currentShiftDate(); if (ui.autoDate !== c) { const wasCurrent = ui.shiftDate === ui.autoDate; ui.autoDate = c; if (wasCurrent && !draft) { ui.shiftDate = c; pointShift(); safeRender(); } } }, 60000);

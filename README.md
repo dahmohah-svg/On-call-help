@@ -60,7 +60,15 @@ Anyone signed in with their PIN can update rooms, including consultants who are 
 ## Hospital overview
 The **Hospital** tab shows every place anaesthesia is working on one screen, as tiles grouped by area: Main OT, cath lab and other rooms, Trauma OT, PACU, NORA areas, and the outside duties (APS / trauma / code blue, assessment, emergency call, OB/GYN). A tile is green when running, amber when waiting, grey when finished and red when someone needs help, and shows the current case, time running, progress and the anaesthetist. Tapping a tile opens that room or list. In the morning it shows the elective distribution; on call it shows only theatres with an on-call case, who holds the phone, and who is free now. Third on-calls land on this tab.
 
-## Admins
+## Email sign-in with approval
+The front page asks doctors to **Sign in** or **Request access**. A request gives the grade (Consultant, Senior specialist, Specialist, Senior registrar, Registrar), full name, email and a password. It waits until an admin approves it on the **Admin** tab and links it to the doctor's name on the rota (the closest name is suggested). Until then the person sees nothing of the board.
+
+- The first admin is created by a second or third on-call who is signed in with their PIN: Admin → *Set up email sign-in*. From then on the board is private, PINs stop working, and everyone signs in with email and password.
+- Admins approve or reject requests, change the linked rota name, make other approved accounts admins (there is always at least one), switch accounts off and on, and give a new password (the app makes one to send privately). Everyone can change their own password under their name at the top.
+- Only admins can change the rota, teams, staff, settings, the OT distribution, room cases, prepared details and the NORA list. The server refuses such a change from anyone else. Others tick statuses, and first on-calls post the calls and cases they receive.
+- Passwords are stored as bcrypt hashes; emails are kept in the accounts table, not in the board. Database: `supabase/oncall_accounts.sql`.
+
+## Admins (before email sign-in)
 Under the **Admin** tab, a second on-call names the board's admins (the first admin should add themselves). From then on only admins enter and change things: the rota, teams and staff, PINs and privacy, the OT distribution, adding or removing cases, prepared details, the NORA team and list, and all imports. Everyone else views, and ticks their own work. The admin decides with four switches what others may still do:
 - a room's anaesthetist starts and finishes the cases in their own room;
 - the day's NORA team marks NORA cases going, done or cancelled;
