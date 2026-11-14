@@ -572,7 +572,7 @@ function findSlot(lists, earliest, dur) {
 }
 function inOT(d) { return d.tier === 'first' && !!d.post && d.post.where === 'ot'; }
 function eligible(t) {
-  const avail = S.doctors.filter(d => d.status !== 'off' && d.tier !== 'third' && d.tier !== 'trainee');
+  const avail = S.doctors.filter(d => d.status !== 'off' && d.tier !== 'third' && d.tier !== 'trainee' && !leaveOf(d.name, S.date));
   const dk = dutyOfType(t.type);
   if (S.session === 'am' && dk && dk !== 'obs') {   // morning: the first on-call holding that duty
     const fs = avail.filter(d => d.tier === 'first' && !d.obs);
@@ -756,7 +756,7 @@ function postSelect(d) {
 }
 function assignOpts(t) {
   return `<option value="">${t.doctorId ? 'Auto (best fit)' : 'Unassigned – pick'}</option>` + S.doctors.filter(d => d.tier !== 'third').map(d =>
-    `<option value="${d.id}" ${t.doctorId === d.id ? 'selected' : ''}>${esc(d.name)} · ${tierShort(d)}${d.obs ? ' obs' : ''}${inOT(d) ? ' (in OT)' : ''}${d.status === 'off' ? ' (off)' : ''}</option>`).join('');
+    `<option value="${d.id}" ${t.doctorId === d.id ? 'selected' : ''}>${esc(d.name)} · ${tierShort(d)}${d.obs ? ' obs' : ''}${inOT(d) ? ' (in OT)' : ''}${d.status === 'off' ? ' (off)' : ''}${leaveOf(d.name, S.date) ? ' (on leave)' : ''}</option>`).join('');
 }
 
 /* ---------- render ---------- */
@@ -896,7 +896,7 @@ function docCard(d) {
   const bar = byType.map(([k, m]) => `<span class="${TYPES[k].cls}" style="width:${Math.min(100, m / L * 100 * 2.5)}%"></span>`).join('');
   const shown = open.slice(0, 4);
   return `<article class="doc ${d.status === 'off' ? 'off' : ''}">
-    <div class="doc-h"><div style="min-width:0"><div class="doc-name">${esc(d.name)}</div>
+    <div class="doc-h"><div style="min-width:0"><div class="doc-name">${esc(d.name)}${leaveOf(d.name, S.date) ? ' <span class="chip" style="background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)">On leave</span>' : ''}</div>
       <div class="chips"><span class="chip ${d.tier === 'second' ? 'tier2' : 'tier1'}">${d.tier === 'second' ? '2nd on-call' : d.tier === 'trainee' ? 'Trainee' : '1st on-call'}</span>${dutyChips(d)}${S.session === 'am' || d.tier !== 'first' ? '' : postChip(d)}${d.coordinator ? '<span class="chip coord">Coordinator</span>' : ''}${d.listPrep ? '<span class="chip lp">List prep</span>' : ''}${d.ext ? `<span class="chip num">ext ${esc(d.ext)}</span>` : ''}</div></div>
       <select class="status" data-act="docstatus" data-id="${d.id}" aria-label="Status of ${esc(d.name)}" ${canAssign() || d.id === ui.meId ? '' : 'disabled'}>${Object.entries(DOC_STATUS).map(([k, v]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
     ${d.tier === 'first' && canAssign() ? dutyPicker(d) : ''}
@@ -968,7 +968,7 @@ function listPrepToday() { const id = ui.meId; return [S.date, S.date + '@am'].s
 function canOtManage() { if (sync.accounts) return isAdmin(); if (!verified() || ui.meId === 'observer') return false; if (!noAdmins()) return isAdmin(); const r = role(); const sf = meStaff();
   return r === 'none' || r === 'second' || r === 'third' || (!!sf && (sf.tier === 'second' || sf.tier === 'third')) || (!!sf && listPrepToday()); }
 // a room's own anaesthetist updates that room's cases
-function canRoom(r) { return canOtManage() || (!!r && (noAdmins() || perm('roomStatus')) && verified() && !!meStaff() && nameIn(r.anaes, myName())); }
+function canRoom(r) { return canOtManage() || (!!r && (noAdmins() || perm('roomStatus')) && verified() && !!meStaff() && (nameIn(r.anaes, myName()) || (overtimeNow(S.date) && nameIn(dayDuties(S.date).overtime, myName())))); }
 // the day's NORA team updates NORA cases
 function canNora() { return canOtManage() || ((noAdmins() || perm('noraStatus')) && verified() && !!meStaff() && nameIn((noraDay(S.date) || {}).team, myName())); }
 function canPrep(kind, rid) { if (!noAdmins()) return isAdmin(); return kind === 'nora' ? canNora() : canRoom(realRoom(rid)); }
@@ -1048,7 +1048,7 @@ function roomCard(r, cs, edit, full) {
 function viewAdmin() {
   if (sync.accounts) {
     if (!isAdmin()) return `<section class="panel"><h2>Admin</h2><p class="empty" style="margin:0">Only admins can open this page.</p></section>`;
-    return viewAccounts() + viewAdminTools();
+    return viewAccounts() + (leaveClashes(21).length ? viewLeave() : '') + viewAdminTools();
   }
   const setup = sync.code && signedIn() && ['second', 'third'].includes((meStaff() || {}).tier) ? `<section class="panel" style="border:2px solid var(--accent)"><h2>Email sign-in with approval</h2>
     <p style="margin:0">Switch the board to accounts: everyone signs in with email and password, new doctors request access with their grade, and admins approve them. Only admins then change the rota, rooms, prepared details and lists; others tick their own work.</p>
@@ -1080,11 +1080,66 @@ function viewAdminTools() {
   return h;
 }
 
+/* ---------- leave ---------- */
+// "Hamad 15/11 – 19/11" (year from the schedule's date) or "Hamad 2026-11-15 – 2026-11-19"
+function parseLeave(txt, ref) {
+  const t = String(txt).trim(); let m = t.match(/^(.+?)\s+(\d{4}-\d{2}-\d{2})\s*(?:[–—-]|to)\s*(\d{4}-\d{2}-\d{2})$/i);
+  if (m) return { name: m[1].trim(), from: m[2], to: m[3] };
+  m = t.match(/^(.+?)\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s*(?:[–—-]|to)\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/i); if (!m) return null;
+  const ry = Number((ref || todayISO()).slice(0, 4)), rm = Number((ref || todayISO()).slice(5, 7));
+  const yr = (y, mo) => y ? (y.length === 2 ? 2000 + Number(y) : Number(y)) : (mo < rm - 6 ? ry + 1 : mo > rm + 6 ? ry - 1 : ry);
+  const iso = (d, mo, y) => `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const fy = yr(m[4], Number(m[3])); let ty = m[7] ? yr(m[7], Number(m[6])) : fy; if (!m[7] && Number(m[6]) < Number(m[3])) ty = fy + 1;
+  return { name: m[1].trim(), from: iso(m[2], m[3], fy), to: iso(m[5], m[6], ty) };
+}
+function addLeave(txt, ref) {
+  const x = parseLeave(txt, ref); if (!x || x.to < x.from) return false; R.leave = R.leave || [];
+  if (!R.leave.some(y => y.name.toLowerCase() === x.name.toLowerCase() && y.from === x.from && y.to === x.to)) R.leave.push({ id: uid(), ...x });
+  return true;
+}
+function leaveOf(name, date) { if (!name) return null; const n = name.toLowerCase(); return (R.leave || []).find(x => x.name.toLowerCase() === n && date >= x.from && date <= x.to) || null; }
+function shortDate(iso) { return new Date(iso + 'T12:00:00').toLocaleDateString([], { day: 'numeric', month: 'short' }); }
+// everywhere someone on leave is still rostered, from today on
+function leaveClashes(days) {
+  const out = []; const start = todayISO();
+  for (let i = 0; i < (days || 21); i++) { const date = addDays(start, i);
+    (R.leave || []).filter(x => date >= x.from && date <= x.to).forEach(x => { const nm = x.name; const where = [];
+      [date + '@am', date].forEach(k => { const sh = R.shifts[k]; if (sh && sh.doctors.some(d => d.name.toLowerCase() === nm.toLowerCase())) where.push(k.endsWith('@am') ? 'morning duty' : 'on-call'); });
+      (otDay(date) || { rooms: [] }).rooms.filter(r => nameIn(r.anaes, nm)).forEach(r => where.push(r.name));
+      if (nameIn((noraDay(date) || {}).team, nm)) where.push('NORA');
+      const dd = (R.days || {})[date] || {}; [['opd', 'OPD'], ['overtime', 'overtime'], ['callsobs', 'OB/GYN calls'], ['otlist', 'overtime list']].forEach(([k, l]) => { if (nameIn(dd[k], nm)) where.push(l); });
+      if (where.length) out.push({ date, name: nm, where: [...new Set(where)] }); }); }
+  return out;
+}
+function viewLeave() {
+  const today = todayISO(); const list = (R.leave || []).filter(x => x.to >= addDays(today, -1)).sort((a, b) => a.from.localeCompare(b.from) || a.name.localeCompare(b.name));
+  const cl = leaveClashes(21); const mg = canManage();
+  return `<section class="panel" ${cl.length ? 'style="border:2px solid var(--warn)"' : ''}><div class="row"><h2>Leave · ${list.length}</h2></div>
+    ${cl.length ? `<div class="banner" style="margin:0"><span><b>On leave but rostered:</b> ${cl.slice(0, 12).map(c => `${esc(c.name)} – ${esc(shortDate(c.date))} (${esc(c.where.join(', '))})`).join(' · ')}${cl.length > 12 ? ' …' : ''}</span></div>` : ''}
+    ${list.length ? `<div class="row" style="gap:6px">${list.map(x => `<span class="chip" style="font-size:13px;${x.from <= today && x.to >= today ? 'border:1px solid var(--warn)' : ''}">${esc(x.name)} · ${esc(shortDate(x.from))} – ${esc(shortDate(x.to))}${mg ? ` <button class="icon-btn" data-act="leave-del" data-id="${x.id}" aria-label="Remove leave">×</button>` : ''}</span>`).join('')}</div>` : '<p class="empty" style="margin:0">No leave entered. It comes with the week schedule, or add it here.</p>'}
+    ${mg ? `<div class="row" style="align-items:flex-end"><label class="f" style="flex:1 1 150px">Doctor<input id="lvName" list="lvNames" placeholder="Name"><datalist id="lvNames">${R.staff.map(x => `<option value="${esc(x.name)}">`).join('')}</datalist></label>
+      <label class="f">From<input type="date" id="lvFrom"></label><label class="f">To<input type="date" id="lvTo"></label><button class="btn sm" data-act="leave-add">Add leave</button></div>` : ''}</section>`;
+}
+function dayDuties(date) { return (R.days || {})[date] || {}; }
+function overtimeNow(date) { if (S.date !== date || S.session !== 'am') return false; const h = new Date().getHours(); return h >= 14 && h < 18 && date === todayISO(); }
+function viewDayDuties(date) {
+  const d = dayDuties(date); if (!d.opd && !d.overtime && !d.callsobs && !d.otlist) return '';
+  const row = (l, v, hl) => v ? `<div class="case-row"${hl ? ' style="background:color-mix(in srgb,var(--ok) 10%,transparent)"' : ''}><b style="min-width:110px">${l}</b><span>${esc(v)}</span></div>` : '';
+  return `<section class="panel"><h2>Today's other duties</h2>${row('OPD 07:30–14:00', d.opd)}${row('Overtime 14:00–18:00', d.overtime, overtimeNow(date))}${row('Overtime list', d.otlist)}${row('Calls OB/GYN', d.callsobs)}</section>`;
+}
+
 /* ---------- "today for me": where this doctor is, in one card ---------- */
 function myToday() {
   const sf = meStaff(); if (!sf) return ''; const date = S.date, name = sf.name; const items = [];
   const am = R.shifts[date + '@am'], night = R.shifts[date];
   const dAm = am && am.doctors.find(d => d.id === sf.id), dN = night && night.doctors.find(d => d.id === sf.id);
+  const lv = leaveOf(name, date);
+  if (lv) items.unshift(`<b style="color:var(--warn)">On leave</b> until ${esc(shortDate(lv.to))}`);
+  const dd = dayDuties(date); const after = (txt, nm) => { const i = String(txt).indexOf('–'); return i < 0 ? txt : txt.slice(0, i).includes(nm) ? 'consultant' : ''; };
+  if (nameIn(dd.opd, name)) items.push(`<b>OPD</b> 07:30–14:00 · ${esc(dd.opd.split('–')[0].trim())}${after(dd.opd, name) === 'consultant' ? ' (consultant)' : ''}`);
+  if (nameIn(dd.callsobs, name)) items.push('<b>Calls OB/GYN</b>');
+  if (nameIn(dd.otlist, name)) items.push('<b>Overtime list</b>');
+  if (nameIn(dd.overtime, name)) items.push(`<b>Overtime 14:00–18:00</b>${after(dd.overtime, name) === 'consultant' ? ' (consultant)' : ''}${overtimeNow(date) ? ' · <span style="color:var(--ok)">now</span>' : ''}`);
   if (dAm && dAm.duty) items.push(`<b>Morning:</b> ${esc(DUTY[dAm.duty])}${dutyPhone(dAm.duty) ? ' · phone <span class="num">' + esc(dutyPhone(dAm.duty)) + '</span>' : ''}`);
   (otDay(date) || { rooms: [] }).rooms.filter(r => nameIn(r.anaes, name)).forEach(r => { const cs = roomCases(r).filter(c => c.status !== 'cancelled'); const dn = cs.filter(c => c.status === 'done').length;
     items.push(`<b>Anaesthesia in ${esc(r.name)}</b>${r.list ? ' · ' + esc(r.list) : ''}${cs.length ? ` · ${dn} of ${cs.length} done` : ''} <button class="btn sm" data-act="map-room" data-name="${esc(r.name)}">Open</button>`); });
@@ -1280,10 +1335,12 @@ function viewMap() {
   // who is free now
   {
     const busy = new Set(S.tasks.filter(t => t.status === 'active' || t.status === 'help').map(t => t.doctorId));
-    const free = S.doctors.filter(d => d.tier !== 'third' && d.status === 'available' && !busy.has(d.id));
+    const free = S.doctors.filter(d => d.tier !== 'third' && d.status === 'available' && !busy.has(d.id) && !leaveOf(d.name, S.date));
     const tied = S.doctors.filter(d => d.tier !== 'third' && (busy.has(d.id) || d.status === 'busy'));
     if (S.doctors.length) h += `<section class="panel"><div class="row"><h2>Free now · ${free.length}</h2><span class="spacer"></span><span class="empty">${tied.length} busy</span></div><div class="row" style="gap:6px">${free.map(d => `<span class="chip">${esc(d.name)} · ${esc(tierShort(d))}</span>`).join('') || '<span class="empty">Everyone on this shift has a case or call in progress.</span>'}</div></section>`;
   }
+  if (S.session === 'am') h += viewDayDuties(S.date);
+  { const away = (R.leave || []).filter(x => S.date >= x.from && S.date <= x.to); if (away.length) h += `<p class="empty" style="margin:0">On leave today: ${esc(away.map(x => x.name).join(', '))}</p>`; }
   h += viewBeds();
   h += `<div class="row"><button class="btn" data-act="report">Day / week report</button><button class="btn" data-act="handover">Handover text</button><span class="spacer"></span></div>`;
   h += alertsPanel();
@@ -1403,6 +1460,7 @@ function viewRooms() {
   const live = all.flatMap(x => x.cs.filter(c => c.status !== 'cancelled'));
   let h = `<div class="nowbar"><b class="k">OT · ${esc(dayLabel(date))}</b><span><b>${cnt('running')}</b> running</span><span><b>${cnt('waiting')}</b> waiting</span><span><b>${cnt('done')}</b> finished</span><span>Cases done <b>${live.filter(c => c.status === 'done').length}/${live.length}</b></span></div>`;
   if (!edit && meStaff() && sync.code) h += pinBanner();
+  { const ot = dayDuties(date).overtime; if (ot) h += `<div class="banner" style="margin:0${overtimeNow(date) ? ';border:2px solid var(--ok)' : ''}"><span><b>Overtime 14:00–18:00${overtimeNow(date) ? ' · now' : ''}:</b> ${esc(ot)}${overtimeNow(date) ? '. Overtime doctors can update any room until 18:00.' : ''}</span></div>`; }
   if (edit) h += `<div class="row"><span class="spacer"></span><button class="btn sm" data-act="rooms-import">Import rooms / cases from text</button></div>`;
   const mine = all.filter(x => nameIn(x.r.anaes, myName()));
   if (!edit && mine.length && canRoom(mine[0].r)) h += `<p class="empty" style="margin:0">You can update ${esc(mine.map(x => x.r.name).join(', '))}. Other rooms are updated by their own anaesthetist.</p>`;
@@ -1578,6 +1636,7 @@ function viewTeam() {
     <li><b>First on-calls</b> post what they receive in <i>My work</i> and mark it To do, In progress, Done or Need help.</li>
     <li><b>List preparation</b> goes to the doctor ticked for list prep on that shift.</li>
     <li>Tasks with a fixed doctor or start time, and tasks in progress or done, are never moved.</li></ul></section>`;
+  h += viewLeave();
   h += viewPrivacy();
   h += viewHistory();
   h += `<section class="panel"><h2>Data</h2><p class="empty" style="margin:0">${sync.code ? 'This board is shared with your department. Deleting here deletes it for everyone.' : 'Everything is saved in this browser only.'} Shifts older than 60 days are cleared automatically. App version <span class="num">__APP_VERSION__</span>. Use bed and ward, never patient names or record numbers.</p>
@@ -1587,7 +1646,8 @@ function viewTeam() {
 /* ---------- import a week's on-call rota from text ---------- */
 // one block per day: a date line, then "Slot: name, name" lines (slot names as on the department rota)
 const ROTA_SLOTS = [
-  [/^teams?$/, 'team'], [/^nora( team)?$/, 'nora'], [/^trainees?( on-?call)?$/, 'trainee'], [/^list( prep(aration)?)?$/, 'list'],
+  [/^teams?$/, 'team'], [/^nora( team)?$/, 'nora'], [/^opd$/, 'opd'], [/^(overtime|over ?time|afternoon)$/, 'overtime'], [/^(overtime list|list \(overtime\))$/, 'otlist'],
+  [/^(calls? ob ?\/? ?gyn|calls? obs|obgyn calls?)$/, 'callsobs'], [/^(leave|on leave|doctors on leave)$/, 'leave'], [/^trainees?( on-?call)?$/, 'trainee'], [/^list( prep(aration)?)?$/, 'list'],
   [/^(aps|aps.*trauma.*|aps.*code.*)$/, 'aps'], [/^(assessment|preop|pre-?op assessment)$/, 'pre'], [/^(emergency( call)?s?|em)$/, 'em'],
   [/^(ob\/?gyn|obs|obgyn|obs ?& ?gyne?|obstetrics?)$/, 'obs'], [/^(second|2nd|second on-?call|2nd on-?call)$/, 'second'],
   [/^(coordinator|team coordinator|coord)$/, 'coord'], [/^(cardiac|cardiac an(a)?esthesia)$/, 'cardiac'], [/^(regular ot|regular|third ot|ot)$/, 'ot'],
@@ -1602,7 +1662,8 @@ function parseRota(txt) {
     const key = m[1].trim().toLowerCase(); const slot = (ROTA_SLOTS.find(([re]) => re.test(key)) || [])[1];
     if (!slot) { bad.push(i + 1); return; }
     const names = m[2].split(/[,،;\/]+/).map(x => x.trim()).filter(x => x && !/^[-–—_]+$/.test(x));
-    if (slot === 'team' || slot === 'nora') days[cur][slot] = m[2].trim(); else days[cur][slot] = (days[cur][slot] || []).concat(names);
+    if (slot === 'leave') { days[cur].leave = (days[cur].leave || []).concat(m[2].split(/[,،;]+/).map(x => x.trim()).filter(Boolean)); return; }
+    if (['team', 'nora', 'opd', 'overtime', 'otlist', 'callsobs'].includes(slot)) days[cur][slot] = m[2].trim(); else days[cur][slot] = (days[cur][slot] || []).concat(names);
   });
   return { days, bad };
 }
@@ -1627,6 +1688,9 @@ function applyRotaDay(date, d, added) {
       coordinator: p.coordinator && tier === 'second', listPrep: p.listPrep, ext: sf.ext || '', status: 'available' };
   });
   if (d.nora) noraDay(date, true).team = d.nora;
+  // the day's other duties from the weekly schedule: OPD, afternoon overtime, its list, OB/GYN calls
+  ['opd', 'overtime', 'otlist', 'callsobs'].forEach(k => { if (d[k] != null) { R.days = R.days || {}; R.days[date] = Object.assign({}, R.days[date] || {}, { [k]: d[k] }); } });
+  if (d.leave) d.leave.forEach(x => addLeave(x, date));
   const team = d.team ? R.teams.find(t => t.name.trim().toLowerCase() === d.team.trim().toLowerCase()) : null;
   if (team) R.rota[date] = team.id;
   if (!people.size) return 0;   // a day with only a team or NORA line leaves the shifts as they are
@@ -1647,7 +1711,7 @@ function showRotaImport(err) {
   $layer.innerHTML = `<div class="overlay" data-act="close-bg"><form class="sheet" id="rotaImportForm" autocomplete="off">
     <div class="row"><h3>Import week schedule</h3><span class="spacer"></span><button type="button" class="btn sm ghost" data-act="close">Close</button></div>
     <p class="empty" style="margin:0">One block per day: a date line, then one line per slot. Names separated by commas. Leave a slot out if nobody is on it.<br>
-      <span class="num">2026-11-15<br>Team: Team 3<br>Trainee: Duaa<br>List prep: Salman<br>APS: Fahad, Sdqat<br>Assessment: Nerman<br>Emergency: Raza<br>OBGYN: Mina<br>Second: Zalat<br>Coordinator: Christine<br>Cardiac: Atef<br>Regular OT: Zarzour, Dhahi<br>NORA: Dhahi – Dina, Haitham<br>OT 1 | Fadhli | Fady<br>OT 2 | Fadhli | Maysa<br>Trauma 1 | Hany, Varun | Anusha</span></p>
+      <span class="num">2026-11-15<br>Team: Team 3<br>Trainee: Duaa<br>List prep: Salman<br>APS: Fahad, Sdqat<br>Assessment: Nerman<br>Emergency: Raza<br>OBGYN: Mina<br>Second: Zalat<br>Coordinator: Christine<br>Cardiac: Atef<br>Regular OT: Zarzour, Dhahi<br>NORA: Dhahi – Dina, Haitham<br>OPD: Ali – Shahin, Mina<br>Overtime: Hany, Sarvesh – Osmani, Raza<br>Overtime list: Zalat<br>Calls OBGYN: Jahangir, Abdo<br>Leave: Hamad 15/11 – 19/11, Fahad 15/11 – 10/12<br>OT 1 | Fadhli | Fady<br>OT 2 | Fadhli | Maysa<br>Trauma 1 | Hany, Varun | Anusha</span></p>
     <p class="empty" style="margin:0">Room lines are "room | consultant or list | anaesthetist(s)" and fill OT rooms. A day with only NORA or room lines leaves its shifts as they are. Otherwise each day replaces who is on that day's morning and night shifts. Work already on those shifts is kept; anyone no longer on the shift has their tasks reassigned. New names are added to All staff.</p>
     <label class="f">Week schedule<textarea id="rotaImportText" style="min-height:240px;font-family:var(--f-mono);font-size:12.5px"></textarea></label>
     ${err ? `<p class="late" style="margin:0">${esc(err)}</p>` : ''}
@@ -1661,14 +1725,16 @@ function doRotaImport() {
   const rotaTxt = raw.map(l => isOt(l) && !isDate(l) ? '' : l).join('\n'), otTxt = raw.map(l => isOt(l) || isDate(l) ? l : '').join('\n');
   const { days, bad } = parseRota(rotaTxt); const ot = parseDistribution(otTxt);
   const otDates = Object.keys(ot.days).filter(d => ot.days[d].length);
-  const dates = Object.keys(days).filter(d => Object.keys(days[d]).some(k => k !== 'team' && days[d][k].length)).sort();
+  const dates = Object.keys(days).filter(d => Object.keys(days[d]).some(k => k !== 'team' && days[d][k] && days[d][k].length)).sort();
   if (!dates.length && !otDates.length) { showRotaImport('Nothing to import. Start each day with a date line like 2026-11-15.' + (bad.length ? ' Lines not understood: ' + bad.slice(0, 8).join(', ') : '')); return; }
   const added = []; let people = 0;
   dates.forEach(d => { people += applyRotaDay(d, days[d], added); });
   const o = otDates.length ? applyDistribution(ot.days) : null;
   const nora = dates.filter(d => days[d].nora).length;
   pointShift(); $layer.innerHTML = ''; commit();
-  toast(`Imported ${dates.length} day${dates.length === 1 ? '' : 's'}${nora ? ' · NORA teams ' + nora : ''}${o ? ' · OT rooms ' + o.rooms + (o.cases ? ', cases ' + o.cases : '') : ''}${added.length ? ' · new staff: ' + added.join(', ') : ''}${bad.length ? ' · skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
+  const clash = leaveClashes(21);
+  if (clash.length) setTimeout(() => toast(`On leave but rostered: ${clash.slice(0, 4).map(c => c.name + ' ' + shortDate(c.date)).join(', ')}${clash.length > 4 ? ' …' : ''} – see Rota & teams → Leave`), 3500);
+  toast(`Imported ${dates.length} day${dates.length === 1 ? '' : 's'}${(R.leave || []).length ? ' · leave ' + R.leave.length : ''}${nora ? ' · NORA teams ' + nora : ''}${o ? ' · OT rooms ' + o.rooms + (o.cases ? ', cases ' + o.cases : '') : ''}${added.length ? ' · new staff: ' + added.join(', ') : ''}${bad.length ? ' · skipped line ' + bad.slice(0, 5).join(', ') : ''}`);
 }
 function showSwap(id) {
   const d = id ? doc(id) : null; const on = new Set(S.doctors.map(x => x.id));
@@ -1893,7 +1959,8 @@ function mergeOt(b, m, t) {
 }
 function merge(base, mine, theirs) {
   theirs = migrate(theirs) || theirs; base = base ? (migrate(base) || base) : theirs;
-  const out = { ...theirs, example: !!(mine.example && theirs.example), settings: pick(base, mine, theirs, 'settings'), beds: pick(base, mine, theirs, 'beds'), admins: pick(base, mine, theirs, 'admins'), perms: pick(base, mine, theirs, 'perms'),
+  const out = { ...theirs, example: !!(mine.example && theirs.example), settings: pick(base, mine, theirs, 'settings'), beds: pick(base, mine, theirs, 'beds'), admins: pick(base, mine, theirs, 'admins'), perms: pick(base, mine, theirs, 'perms'), leave: mergeColl(base.leave, mine.leave, theirs.leave),
+    days: Object.assign({}, theirs.days || {}, Object.fromEntries(Object.entries(mine.days || {}).filter(([k, v]) => !same((base.days || {})[k], v)))),
     staff: mergeColl(base.staff, mine.staff, theirs.staff), teams: mergeColl(base.teams, mine.teams, theirs.teams), rota: {}, shifts: {},
     ot: mergeOt(base.ot || {}, mine.ot || {}, theirs.ot || {}), nora: mergeNora(base.nora || {}, mine.nora || {}, theirs.nora || {}) };
   for (const k of new Set([...Object.keys(mine.rota || {}), ...Object.keys(theirs.rota || {}), ...Object.keys(base.rota || {})])) {
@@ -2300,6 +2367,11 @@ document.addEventListener('click', e => {
   if (a === 'nora-copy') { showText('NORA summary', noraText()); return; }
   if (a === 'report') { showReport(); return; }
   if (a === 'more-tabs') { ui.moreTabs = !ui.moreTabs; render(); return; }
+  if (a === 'leave-add' || a === 'leave-del') { if (!canManage()) { toast(denyMsg('Only admins change leave')); return; }
+    if (a === 'leave-del') { R.leave = (R.leave || []).filter(x => x.id !== el.dataset.id); commit(); return; }
+    const v = id => ((document.getElementById(id) || {}).value || '').trim(); const n = v('lvName'), f = v('lvFrom'), t = v('lvTo') || v('lvFrom');
+    if (!n || !f) { toast('Enter the name and the first day'); return; } if (t < f) { toast('The last day is before the first day'); return; }
+    addLeave(`${n} ${f} – ${t}`); commit(); toast(`Leave added for ${n}`); return; }
   if (a === 'sign-mode') { ui.signMode = el.dataset.m; ui.signinErr = ''; ui.signinMsg = ''; render(); return; }
   if (a === 'pick-grade') { ['rqName', 'rqEmail'].forEach(id => { const x = document.getElementById(id); if (x) ui[id] = x.value; }); ui.reqGrade = el.dataset.g; if (el.dataset.setup) showSetup(); else render(); return; }
   if (a === 'acct-setup') { ui.signinErr = ''; showSetup(); return; }

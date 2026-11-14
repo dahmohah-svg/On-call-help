@@ -57,6 +57,12 @@ The **OT rooms** tab is a live board of every operating room for the day:
 - **OT distribution** sets each day's rooms with their list/specialty and anaesthetist, and can copy the rooms from the previous day.
 Anyone signed in with their PIN can update rooms, including consultants who are not on the on-call shift.
 
+## Leave, OPD, overtime and OB/GYN calls
+The week schedule import also takes, per day: `OPD: Ali – Shahin, Mina`, `Overtime: Hany, Sarvesh – Osmani, Raza` (14:00–18:00), `Overtime list: Zalat`, `Calls OBGYN: Jahangir, Abdo`, and `Leave: Hamad 15/11 – 19/11, Fahad 15/11 – 10/12` (any number of names, under any date).
+- **Leave** is listed under Rota & teams → Leave (admins can add or remove it there too). Anyone on leave but still rostered (on-call, morning duty, an OT room, NORA, OPD, overtime) is flagged for the next three weeks, after an import and on the Admin tab. People on leave get an "On leave" tag, are left out of "Free now" and auto-scheduling, and see "On leave until …" on their Today card.
+- **Today for me** now also shows OPD, overtime (marked "now" during 14:00–18:00), the overtime list and OB/GYN calls.
+- **Overtime 14:00–18:00:** the Hospital and OT rooms tabs show the overtime team; between 14:00 and 18:00 overtime doctors can update any room's cases (when room updates are allowed).
+
 ## Hospital overview
 The **Hospital** tab shows every place anaesthesia is working on one screen, as tiles grouped by area: Main OT, cath lab and other rooms, Trauma OT, PACU, NORA areas, and the outside duties (APS / trauma / code blue, assessment, emergency call, OB/GYN). A tile is green when running, amber when waiting, grey when finished and red when someone needs help, and shows the current case, time running, progress and the anaesthetist. Tapping a tile opens that room or list. In the morning it shows the elective distribution; on call it shows only theatres with an on-call case, who holds the phone, and who is free now. Third on-calls land on this tab.
 
